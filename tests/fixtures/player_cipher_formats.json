@@ -1,0 +1,16 @@
+{
+  "streamingData": {
+    "formats": [
+      {
+        "itag": 18,
+        "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
+        "signatureCipher": "url=https%3A%2F%2Fmedia.example.test%2Fvideoplayback%3Fitag%3D18&sp=sig&s=encrypted-value"
+      },
+      {
+        "itag": 22,
+        "mimeType": "video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"",
+        "signatureCipher": "url=https%3A%2F%2Fmedia.example.test%2Fvideoplayback%3Fitag%3D22%26expire%3D2000000000&sp=sig&sig=plain-signature"
+      }
+    ]
+  }
+}

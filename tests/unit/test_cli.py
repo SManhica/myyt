@@ -1,8 +1,10 @@
 import json
+from pathlib import Path
 
 from myyt.cli import main
 from myyt.exceptions import ExtractionError, SearchError
-from myyt.models import SearchResult, VideoInfo
+from myyt.models import PlayerInfo, SearchResult, VideoInfo
+from myyt.youtube.formats import manifest_urls, parse_streaming_formats
 
 
 class SuccessfulExtractor:
@@ -46,6 +48,20 @@ class EmptySearch:
 class FailingSearch:
     def search(self, _query: str, *, limit: int) -> list[SearchResult]:
         raise SearchError("malformed search fixture")
+
+
+class PlayerExtractor:
+    def extract_player(self, _url: str) -> PlayerInfo:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "player_android_formats.json"
+        response = json.loads(fixture_path.read_text(encoding="utf-8"))
+        dash, hls = manifest_urls(response)
+        return PlayerInfo(
+            video=SuccessfulExtractor().extract(_url),
+            formats=parse_streaming_formats(response),
+            player_client="ANDROID",
+            dash_manifest_url=dash,
+            hls_manifest_url=hls,
+        )
 
 
 def test_json_mode_writes_only_valid_json_to_stdout(capsys) -> None:
@@ -114,3 +130,32 @@ def test_search_error_preserves_machine_readable_stdout(capsys) -> None:
     assert exit_code == SearchError.exit_code
     assert captured.out == ""
     assert captured.err == "error: malformed search fixture\n"
+
+
+def test_formats_json_contains_video_client_and_normalized_formats(capsys) -> None:
+    exit_code = main(
+        ["formats", "https://youtu.be/M7lc1UVf-VE", "--json"],
+        extractor=PlayerExtractor(),
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["video"]["video_id"] == "M7lc1UVf-VE"
+    assert payload["player_client"] == "ANDROID"
+    assert {item["itag"] for item in payload["formats"]} == {18, 137, 140, 251}
+    assert captured.err == ""
+
+
+def test_bestaudio_json_uses_explicit_selector(capsys) -> None:
+    exit_code = main(
+        ["bestaudio", "https://youtu.be/M7lc1UVf-VE", "--json"],
+        extractor=PlayerExtractor(),
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["format"]["itag"] == 251
+    assert payload["format"]["audio_codec"] == "opus"
+    assert payload["format"]["media_url"].startswith("https://")

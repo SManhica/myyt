@@ -39,3 +39,13 @@ class ExtractionError(MyytError):
 
 class SearchError(ExtractionError):
     """YouTube returned search data that could not be normalized."""
+
+
+class FormatExtractionError(ExtractionError):
+    """Playable media formats could not be obtained or normalized."""
+
+
+class NoSuitableFormatError(MyytError):
+    """No available format satisfies the requested selection policy."""
+
+    exit_code = 6

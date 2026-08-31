@@ -1,0 +1,65 @@
+{
+  "playabilityStatus": {"status": "OK"},
+  "streamingData": {
+    "expiresInSeconds": "21600",
+    "formats": [
+      {
+        "itag": 18,
+        "mimeType": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
+        "bitrate": 550000,
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "qualityLabel": "360p",
+        "audioQuality": "AUDIO_QUALITY_LOW",
+        "audioSampleRate": "44100",
+        "audioChannels": 2,
+        "url": "https://media.example.test/videoplayback?itag=18&expire=2000000000&sig=muxed"
+      }
+    ],
+    "adaptiveFormats": [
+      {
+        "itag": 137,
+        "mimeType": "video/mp4; codecs=\"avc1.640028\"",
+        "bitrate": 4500000,
+        "averageBitrate": 3900000,
+        "width": 1920,
+        "height": 1080,
+        "fps": 30,
+        "qualityLabel": "1080p",
+        "contentLength": "120000000",
+        "initRange": {"start": "0", "end": "739"},
+        "indexRange": {"start": "740", "end": "1300"},
+        "url": "https://media.example.test/videoplayback?itag=137&expire=2000000000&sig=video"
+      },
+      {
+        "itag": 140,
+        "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+        "bitrate": 131585,
+        "averageBitrate": 128500,
+        "audioQuality": "AUDIO_QUALITY_MEDIUM",
+        "audioSampleRate": "44100",
+        "audioChannels": 2,
+        "contentLength": "3560000",
+        "initRange": {"start": "0", "end": "722"},
+        "indexRange": {"start": "723", "end": "1200"},
+        "url": "https://media.example.test/videoplayback?itag=140&expire=2000000000&sig=aac"
+      },
+      {
+        "itag": 251,
+        "mimeType": "audio/webm; codecs=\"opus\"",
+        "bitrate": 162000,
+        "averageBitrate": 158000,
+        "audioQuality": "AUDIO_QUALITY_MEDIUM",
+        "audioSampleRate": "48000",
+        "audioChannels": 2,
+        "contentLength": "4200000",
+        "initRange": {"start": "0", "end": "265"},
+        "indexRange": {"start": "266", "end": "800"},
+        "url": "https://media.example.test/videoplayback?itag=251&expire=2000000000&sig=opus"
+      }
+    ],
+    "dashManifestUrl": "https://manifest.example.test/dash.mpd",
+    "hlsManifestUrl": "https://manifest.example.test/master.m3u8"
+  }
+}

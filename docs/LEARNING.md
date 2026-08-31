@@ -116,3 +116,62 @@ IDs. The CLI serializes the resulting list as one JSON array.
 4. Add a malformed `ytcfg` assignment and verify that limits satisfied by the first
    page still succeed.
 5. Compare a 5-result and 21-result request to see when pagination begins.
+
+## Version 0.3 — Player and format extraction
+
+### Concepts introduced
+
+- Layered fallback strategies for volatile network clients
+- MIME types, containers, and codec identifiers
+- Muxed versus adaptive audio/video streams
+- Expiring signed URLs and Unix timestamps
+- Pure ranking functions and lexicographic tuple ordering
+- Range-addressable/fragmented media metadata
+- Parsing query strings inside cipher payloads
+
+### Important Python APIs used
+
+- `urllib.parse.urlparse`, `parse_qs`, `urlencode`, and `urlunparse`
+- Frozen dataclasses for normalized `MediaFormat` and `PlayerInfo`
+- Tuples for immutable codec lists and ranking keys
+- `max(..., key=...)` for explicit audio selection policy
+- `collections.abc.Mapping` for defensive response validation
+
+### Important networking concepts
+
+The normal WEB player response does not always expose individual media URLs. Current
+responses may list format metadata plus a server-assisted ABR URL. A different public
+first-party player context can return direct signed format URLs. `YouTubePlayer`
+isolates this client variation from metadata parsing and selection.
+
+Direct media URLs contain signatures and an `expire` query value. They are temporary,
+not stable identifiers. V0.3 validates a selected URL with an HTTP byte-range request
+in live tests, but full streaming/download transfer belongs to v0.4.
+
+### How this version works internally
+
+`YouTubeExtractor.extract_player` obtains watch metadata and asks `YouTubePlayer` for
+a response with a direct audio URL. `parse_streaming_formats` converts every recognized
+muxed/adaptive entry into `MediaFormat`. `select_best_audio` filters unusable URLs and
+ranks candidates without making HTTP calls. The CLI renders all formats or the single
+selected audio result.
+
+Encrypted `signatureCipher.s` values and untransformed `n` parameters are recorded as
+unusable rather than guessed. The verified ANDROID/IOS fallback currently avoids both.
+
+### Functions and classes worth studying
+
+- `YouTubePlayer.resolve`: bounded public client fallback
+- `parse_streaming_formats`: raw-list traversal and deduplication
+- `parse_mime_type` and `classify_codecs`: media type normalization
+- `normalize_format`: expiry, size, adaptive, cipher, and transport fields
+- `select_best_audio`: pure multi-factor ranking
+- `YouTubeExtractor.extract_player`: orchestration without responsibility leakage
+
+### Suggested exercises
+
+1. Compare itags and codecs across the three live integration video IDs.
+2. Change selector bitrates in fixtures and predict the winning tuple before testing.
+3. Add a format URL containing `n` and verify it is not selected.
+4. Add an unknown codec fixture and inspect the normalized fallback behavior.
+5. Convert an `expires_at` epoch to a timezone-aware Python `datetime`.

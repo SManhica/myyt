@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -21,6 +22,24 @@ class StubClient:
     def get_text(self, url: str, *, params: dict[str, str], headers: dict[str, str]) -> str:
         self.calls.append((url, params, headers))
         return self.html
+
+
+class PlayerStubClient(StubClient):
+    def __init__(self, html: str, player_response: dict) -> None:
+        super().__init__(html)
+        self.player_response = player_response
+        self.post_calls: list[tuple[str, dict, dict, dict]] = []
+
+    def post_json(
+        self,
+        url: str,
+        payload: dict,
+        *,
+        params: dict,
+        headers: dict,
+    ) -> dict:
+        self.post_calls.append((url, payload, params, headers))
+        return self.player_response
 
 
 def fixture(name: str) -> str:
@@ -73,3 +92,19 @@ def test_rejects_mismatched_response_video_id() -> None:
 
     with pytest.raises(ExtractionError, match="different video"):
         normalize_video_info(response, parsed)
+
+
+def test_extract_player_combines_metadata_and_normalized_formats() -> None:
+    client = PlayerStubClient(
+        fixture("watch_page_formats.html"),
+        json.loads(fixture("player_android_formats.json")),
+    )
+
+    player_info = YouTubeExtractor(client=client).extract_player(
+        "https://youtu.be/M7lc1UVf-VE"
+    )
+
+    assert player_info.video.title == "Player format fixture"
+    assert player_info.player_client == "ANDROID"
+    assert {media_format.itag for media_format in player_info.formats} == {18, 137, 140, 251}
+    assert player_info.dash_manifest_url == "https://manifest.example.test/dash.mpd"

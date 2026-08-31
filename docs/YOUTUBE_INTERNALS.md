@@ -107,3 +107,75 @@ Fixtures preserve representative shapes and the parser validates required contai
 Search results cannot provide reliable media file size. Size depends on the selected
 format and its content length, so it remains a v0.3 concern rather than an invented
 search field.
+
+## Version 0.3 player and format observations
+
+Observed against public YouTube responses on 2026-08-31:
+
+- The WEB watch response can contain `adaptiveFormats` metadata with no `url` or
+  `signatureCipher`, plus `serverAbrStreamingUrl`. This was observed for ordinary and
+  music videos and means format metadata alone is not a downloadable URL.
+- A WEB response for another normal public video exposed one ciphered muxed format
+  while adaptive formats still lacked URLs. Response shape varies per video.
+- A public ANDROID player request returned `formats` and `adaptiveFormats` with direct
+  signed URLs for all three tested videos. IOS also returned direct URLs in probing.
+- The ANDROID request worked without `contentCheckOk`, `racyCheckOk`, authentication,
+  cookies, or access-control override flags.
+- The selected Android audio URL contained `sig` and `expire`, did not contain `n`,
+  and returned HTTP 206 with 1,024 audio bytes for `Range: bytes=0-1023`.
+
+These observations justify the current WEB -> ANDROID -> IOS resolution strategy.
+Client versions are implementation data isolated in `youtube/player.py`; they can
+change independently of the normalized models and selector.
+
+### `streamingData`
+
+- `formats` usually contains muxed audio+video representations.
+- `adaptiveFormats` contains separate audio-only or video-only representations.
+- `mimeType` combines the media type and codec list, for example
+  `audio/mp4; codecs="mp4a.40.2"`.
+- `itag` identifies a representation but is not sufficient to choose quality by
+  itself; fields and availability must be inspected.
+- `contentLength` is a decimal byte count when present.
+- `audioSampleRate` is commonly a decimal string while channels are numeric.
+- `initRange` and `indexRange` indicate range-addressable fragmented container data.
+- `dashManifestUrl` and `hlsManifestUrl` are optional alternative transports.
+
+### URL and cipher state
+
+V0.3 distinguishes:
+
+- Direct URL: immediately available under `url`.
+- Plain cipher signature: a cipher object whose non-encrypted `sig`/`signature` can be
+  appended under its requested `sp` parameter.
+- Encrypted signature: `signatureCipher.s`; recorded as ciphered with no usable URL.
+- `n` parameter: recorded as requiring a player transform and excluded by the audio
+  selector until transformation is implemented.
+
+Player-JavaScript deciphering is not implemented in v0.3 because the verified public
+player fallback returns usable signed URLs without it. If that changes, the future
+implementation must be isolated, cached by player version, fixture-tested, and must
+not silently return an untransformed URL.
+
+### Best-audio policy
+
+The selector ranks, in order:
+
+1. audio-only over muxed audio+video;
+2. recognized/supported audio codec;
+3. YouTube audio-quality label;
+4. effective average bitrate, falling back to bitrate;
+5. codec preference as a tie-breaker;
+6. direct HTTPS/HTTP transport;
+7. sample rate;
+8. known content length.
+
+This is a declared application policy, not a fact supplied by YouTube.
+
+### Confirmed limitations
+
+- DASH/HLS manifest URLs are preserved but their manifests are not expanded into
+  additional `MediaFormat` entries yet.
+- Live-only content that has no direct audio representation can therefore fail
+  selection.
+- URL refresh is not automatic until the downloader/streaming layers exist.

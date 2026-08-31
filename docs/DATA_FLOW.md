@@ -59,6 +59,43 @@ CLI human renderer or JSON array
 Client configuration and continuation tokens never leave the search component. The
 CLI receives only normalized `SearchResult` instances.
 
+## Version 0.3 formats and audio selection
+
+```text
+CLI formats/bestaudio URL
+    |
+    v
+YouTubeExtractor.extract_player
+    |
+    +--> URL parser
+    +--> watch-page HTTP + initial player response
+    +--> normalize VideoInfo
+    |
+    v
+YouTubePlayer.resolve
+    |
+    +--> usable direct WEB audio? --> keep WEB response
+    |
+    +--> otherwise: public ytcfg --> ANDROID player request
+    |                                  |
+    |                                  +--> fallback IOS if needed
+    v
+response with directly usable audio URL
+    |
+    v
+parse_streaming_formats --> tuple[MediaFormat, ...]
+    |
+    +--> formats command --> human table / PlayerInfo JSON
+    |
+    +--> select_best_audio (pure, no HTTP)
+              |
+              v
+         bestaudio command --> human details / selected-format JSON
+```
+
+Future downloaders will receive the selected `MediaFormat`; they will not parse
+YouTube metadata or duplicate selection rules.
+
 ## Planned later flow
 
 ```text
@@ -74,6 +111,6 @@ media downloader --> binary stdout
 Node.js child process --> FFmpeg stdin --> MP3 --> Express response
 ```
 
-Search is now a sibling entry path into normalized `SearchResult` objects. Format
-selection will remain a pure decision over normalized formats. Downloaders will
-receive media URLs/protocol information without parsing YouTube metadata.
+Search is a sibling entry path into normalized `SearchResult` objects. Format
+selection is now a pure decision over normalized formats. Downloaders will receive
+media URLs/protocol information without parsing YouTube metadata.

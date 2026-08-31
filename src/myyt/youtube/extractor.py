@@ -5,9 +5,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from myyt.exceptions import ExtractionError, VideoUnavailableError
-from myyt.models import VideoInfo
+from myyt.models import PlayerInfo, VideoInfo
 
 from .client import YouTubeClient
+from .formats import manifest_urls, parse_streaming_formats
 from .parsing import (
     as_mapping,
     as_string,
@@ -17,6 +18,7 @@ from .parsing import (
     text_value,
 )
 from .url_parser import ParsedVideoURL, parse_video_url
+from .player import YouTubePlayer
 
 _PLAYER_RESPONSE_MARKERS = (
     re.compile(r"(?:var\s+)?ytInitialPlayerResponse\s*=\s*"),
@@ -29,6 +31,30 @@ class YouTubeExtractor:
         self.client = client or YouTubeClient()
 
     def extract(self, url: str) -> VideoInfo:
+        parsed, _, player_response = self._fetch_watch_data(url)
+        return normalize_video_info(player_response, parsed)
+
+    def extract_player(self, url: str) -> PlayerInfo:
+        parsed, html, initial_response = self._fetch_watch_data(url)
+        video = normalize_video_info(initial_response, parsed)
+        resolved = YouTubePlayer(self.client).resolve(
+            parsed.video_id,
+            html,
+            initial_response,
+        )
+        formats = parse_streaming_formats(resolved.response)
+        dash_manifest_url, hls_manifest_url = manifest_urls(resolved.response)
+        return PlayerInfo(
+            video=video,
+            formats=formats,
+            player_client=resolved.client_name,
+            dash_manifest_url=dash_manifest_url,
+            hls_manifest_url=hls_manifest_url,
+        )
+
+    def _fetch_watch_data(
+        self, url: str
+    ) -> tuple[ParsedVideoURL, str, dict[str, Any]]:
         parsed = parse_video_url(url)
         html = self.client.get_text(
             parsed.webpage_url,
@@ -36,7 +62,7 @@ class YouTubeExtractor:
             headers={"Cookie": "SOCS=CAI; PREF=hl=en"},
         )
         player_response = extract_initial_player_response(html)
-        return normalize_video_info(player_response, parsed)
+        return parsed, html, player_response
 
 
 def extract_initial_player_response(html: str) -> dict[str, Any]:
