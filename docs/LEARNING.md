@@ -56,3 +56,63 @@ and returns `VideoInfo`. Only the CLI decides how to display it.
 4. Compare `json.JSONDecoder.raw_decode` with a greedy `{.*}` regular expression
    on nested objects and strings containing braces.
 5. Add a CLI test for a video longer than one hour.
+
+## Version 0.2 — YouTube search
+
+### Concepts introduced
+
+- Recursive traversal of heterogeneous JSON renderer trees
+- Generators that yield matching structures without copying the whole response
+- Ordered deduplication with sets plus lists
+- Pagination and continuation tokens
+- Parsing a constrained JavaScript string representation without evaluating code
+- Separating public result models from internal transport state
+
+### Important Python APIs used
+
+- `Iterator` and generator functions for renderer discovery
+- `Mapping` checks for defensive JSON traversal
+- `json.JSONDecoder.raw_decode` for objects embedded in HTML
+- `json.loads` after deterministic JavaScript-string decoding
+- `argparse` type validators for `--limit`
+
+### Important networking concepts
+
+The initial search result is a normal HTML page. It contains both initial result data
+and the public web-client context used by YouTube itself. When the requested limit is
+larger than that page, `myyt` sends the continuation token and client context to the
+same first-party search endpoint. Continuation tokens are opaque and temporary: code
+must pass them back unchanged and must not infer meaning from their contents.
+
+Requests remain bounded. V0.2 accepts at most 100 results, follows at most ten pages,
+stops on repeated tokens, and stops when a page adds no new videos. These guards avoid
+infinite pagination loops when upstream responses are inconsistent.
+
+### How this version works internally
+
+`YouTubeSearch.search` validates the query and limit, retrieves `/results`, extracts
+`ytInitialData`, and scopes parsing to the primary search list. Recursive traversal
+finds `videoRenderer` objects even inside supported shelves. Incomplete or non-video
+renderers are skipped. Valid entries become `SearchResult` values.
+
+If more results are needed, the search component decodes `ytcfg` web-client settings,
+POSTs the continuation request, normalizes new results, and removes duplicate video
+IDs. The CLI serializes the resulting list as one JSON array.
+
+### Functions and classes worth studying
+
+- `YouTubeSearch.search`: bounded pagination and ordered deduplication
+- `parse_initial_search_page`: required response-container validation
+- `_renderer_values`: recursive generator traversal
+- `_normalize_video_renderer`: missing-field policy and model construction
+- `extract_web_client_config`: safe decoding without `eval`
+- `_render_search`: human versus JSON stdout contracts
+
+### Suggested exercises
+
+1. Add a fixture containing a live result with no `lengthText`.
+2. Add a continuation fixture that repeats a video ID and verify stable ordering.
+3. Trace which renderer kinds are ignored by the video-only search contract.
+4. Add a malformed `ytcfg` assignment and verify that limits satisfied by the first
+   page still succeed.
+5. Compare a 5-result and 21-result request to see when pagination begins.

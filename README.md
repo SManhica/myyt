@@ -1,20 +1,23 @@
 # myyt
 
 `myyt` is a YouTube-only metadata extraction and media downloading project written
-from scratch in Python. Version 0.1 provides public video URL parsing and metadata
-extraction. It does not import, wrap, or invoke yt-dlp or another downloader.
+from scratch in Python. Version 0.2 provides public video metadata extraction and
+YouTube search. It does not import, wrap, or invoke yt-dlp or another downloader.
 
-## Current capabilities (v0.1)
+## Current capabilities (v0.2)
 
 - Parse `youtube.com/watch`, `youtu.be`, and `youtube.com/shorts` URLs, plus common
   mobile, live, and embed variants.
 - Retrieve a public watch page through a retrying YouTube HTTP client.
 - Normalize embedded player metadata into a typed `VideoInfo` model.
+- Search public YouTube results and normalize video entries into `SearchResult`.
+- Follow first-party YouTube continuation responses when a limit needs more than the
+  initial result page.
 - Emit readable terminal output or JSON-only stdout.
 - Run deterministic fixture-based tests; live tests are opt-in.
 
-Search, format discovery, downloading, FFmpeg processing, and binary stdout
-streaming are intentionally not implemented yet.
+Format discovery, downloading, FFmpeg processing, and binary stdout streaming are
+intentionally not implemented yet.
 
 ## Requirements
 
@@ -41,10 +44,13 @@ python -m pip install -e ".[dev]"
 myyt info "https://www.youtube.com/watch?v=M7lc1UVf-VE"
 myyt info "https://youtu.be/M7lc1UVf-VE" --json
 python -m myyt info "https://www.youtube.com/shorts/M7lc1UVf-VE" --json
+myyt search "Coldplay Yellow"
+myyt search "Coldplay Yellow" --limit 5 --json
 ```
 
-JSON mode writes exactly one JSON object to stdout. Errors and diagnostics are
-written to stderr and failures return a non-zero exit status.
+JSON mode writes exactly one JSON document to stdout: an object for `info` and an
+array for `search`. Errors and diagnostics are written to stderr and failures return
+a non-zero exit status.
 
 ## Tests
 

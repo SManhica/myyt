@@ -13,6 +13,12 @@ class InvalidURLError(MyytError):
     exit_code = 2
 
 
+class InvalidQueryError(MyytError):
+    """A search query or requested result count is invalid."""
+
+    exit_code = 2
+
+
 class NetworkError(MyytError):
     """A request failed before a usable YouTube response was obtained."""
 
@@ -29,3 +35,7 @@ class ExtractionError(MyytError):
     """YouTube returned data that the current extractor could not normalize."""
 
     exit_code = 5
+
+
+class SearchError(ExtractionError):
+    """YouTube returned search data that could not be normalized."""

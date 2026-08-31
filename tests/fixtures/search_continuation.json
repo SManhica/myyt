@@ -1,0 +1,24 @@
+{
+  "onResponseReceivedCommands": [
+    {
+      "appendContinuationItemsAction": {
+        "continuationItems": [
+          {
+            "itemSectionRenderer": {
+              "contents": [
+                {
+                  "videoRenderer": {
+                    "videoId": "M7lc1UVf-VE",
+                    "title": {"simpleText": "Continuation result"},
+                    "shortBylineText": {"runs": [{"text": "Google for Developers"}]},
+                    "thumbnail": {"thumbnails": [{"url": "https://example.test/continued.jpg"}]}
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

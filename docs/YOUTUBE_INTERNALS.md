@@ -69,3 +69,41 @@ response for the supported public-page path.
 
 V0.3 should preserve raw response fixtures, model expiration explicitly, and keep
 player-JavaScript processing separate from both format ranking and media transfer.
+
+## Version 0.2 search observations
+
+Observed against the public web client on 2026-08-31:
+
+- `/results?search_query=...` embeds its initial response in `ytInitialData`.
+- Primary results currently appear below
+  `contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer`.
+- Normal video entries use `videoRenderer`; channels, playlists, ads, and other
+  surfaces use different renderer names.
+- Titles and channel names use either `simpleText` or concatenated `runs`.
+- Search durations are display strings such as `4:33`, unlike the decimal second
+  strings used by the player response.
+- The initial page currently provides a `continuationItemRenderer` after its first
+  result batch.
+- Public web-client configuration is delivered through `ytcfg.set(...)`. Current
+  pages may pass that configuration as a quoted JSON string rather than a direct
+  object.
+- The continuation request uses `/youtubei/v1/search`, the opaque token, and the
+  public page's API key and client context. Later responses place result items under
+  response-received command/action containers.
+
+These are observed web-client structures, not documented YouTube Data API contracts.
+Fixtures preserve representative shapes and the parser validates required containers.
+
+### Search normalization decisions
+
+- Only valid 11-character `videoRenderer.videoId` entries with titles become results.
+- Missing channel, thumbnail, or duration fields become JSON `null`; they do not
+  invalidate an otherwise usable result.
+- Duplicate video IDs are removed while preserving first-seen order.
+- A valid page with no video renderers produces an empty result list.
+- Continuation tokens, visitor data, API keys, tracking fields, and renderer details
+  are transport state and never enter the public `SearchResult` schema.
+
+Search results cannot provide reliable media file size. Size depends on the selected
+format and its content length, so it remains a v0.3 concern rather than an invented
+search field.

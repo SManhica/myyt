@@ -1,6 +1,6 @@
 """YouTube-only media extraction tools."""
 
-from .models import VideoInfo
+from .models import SearchResult, VideoInfo
 
-__all__ = ["VideoInfo"]
-__version__ = "0.1.0"
+__all__ = ["SearchResult", "VideoInfo"]
+__version__ = "0.2.0"
