@@ -21,7 +21,7 @@ def test_extract_formats_from_public_video_categories(video_id: str) -> None:
     selected = select_best_audio(player_info.formats)
 
     assert player_info.formats
-    assert player_info.player_client in {"WEB", "ANDROID", "IOS"}
+    assert player_info.player_client == "VISIONOS"
     assert selected.has_audio is True
     assert selected.media_url.startswith("https://")
     assert selected.expires_at is not None

@@ -157,7 +157,9 @@ ranks candidates without making HTTP calls. The CLI renders all formats or the s
 selected audio result.
 
 Encrypted `signatureCipher.s` values and untransformed `n` parameters are recorded as
-unusable rather than guessed. The verified ANDROID/IOS fallback currently avoids both.
+unusable rather than guessed. The verified Android/iOS fallback avoided both during
+v0.3 development; v0.4.1 replaces it because GVS token policy later made those URLs
+unsuitable for complete downloads.
 
 ### Functions and classes worth studying
 
@@ -244,3 +246,36 @@ absolute path, which remains easy for another process to consume.
 3. Add filename cases for Unicode normalization and Windows device names.
 4. Replace the fake FFmpeg process with a tiny controlled helper executable in a test.
 5. Design a segment model for HLS without coupling it to YouTube metadata.
+
+## Version 0.4.1 — Validating playback capability
+
+### Concepts introduced
+
+- A URL's presence does not prove end-to-end playback authorization.
+- Small health probes can produce false confidence when enforcement applies to real
+  transfer behavior.
+- Proof-of-Origin tokens are client- and purpose-specific attestation data, distinct
+  from URL signatures and expiry timestamps.
+- Client fallback policy must account for transport requirements, not only response
+  shape.
+
+### How the failure was isolated
+
+The original Android URL passed a 1 KiB range test but rejected a full GET. Bounded
+ranges showed that the problem was not ordinary expiry or resume corruption. Testing
+another first-party profile separated media transfer behavior from the generic HTTP
+downloader: the visionOS response supplied the same audio representation and completed
+normally without adding an attestation token.
+
+### Functions and classes worth studying
+
+- `YouTubePlayer.resolve`: capability-aware client selection
+- `PlayerClientProfile`: volatile first-party client identity kept behind one boundary
+- `HTTPDownloader._transfer`: sequential range validation and resume
+
+### Suggested exercises
+
+1. Add a fake client whose first response has a URL but whose safe fallback succeeds.
+2. Record full-transfer success separately from a small range probe in a live test.
+3. Design a future PO-token provider interface without implementing attestation inside
+   the format parser or downloader.

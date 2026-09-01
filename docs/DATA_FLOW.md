@@ -59,7 +59,7 @@ CLI human renderer or JSON array
 Client configuration and continuation tokens never leave the search component. The
 CLI receives only normalized `SearchResult` instances.
 
-## Version 0.3 formats and audio selection
+## Current formats and audio selection (v0.4.1)
 
 ```text
 CLI formats/bestaudio URL
@@ -74,11 +74,9 @@ YouTubeExtractor.extract_player
     v
 YouTubePlayer.resolve
     |
-    +--> usable direct WEB audio? --> keep WEB response
-    |
-    +--> otherwise: public ytcfg --> ANDROID player request
-    |                                  |
-    |                                  +--> fallback IOS if needed
+    +--> public ytcfg --> VISIONOS player request
+    |                       |
+    |                       +--> direct audio without GVS proof-token requirement
     v
 response with directly usable audio URL
     |

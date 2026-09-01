@@ -124,9 +124,9 @@ Observed against public YouTube responses on 2026-08-31:
 - The selected Android audio URL contained `sig` and `expire`, did not contain `n`,
   and returned HTTP 206 with 1,024 audio bytes for `Range: bytes=0-1023`.
 
-These observations justify the current WEB -> ANDROID -> IOS resolution strategy.
-Client versions are implementation data isolated in `youtube/player.py`; they can
-change independently of the normalized models and selector.
+These observations justified the v0.3 WEB -> ANDROID -> IOS resolution strategy at
+the time. V0.4.1 supersedes it after full transfers demonstrated current GVS
+Proof-of-Origin enforcement. Client versions remain isolated in `youtube/player.py`.
 
 ### `streamingData`
 
@@ -228,3 +228,30 @@ codes.
   an explicit rejection.
 - Player signature/`n` transforms remain deferred unless public client responses stop
   providing usable signed URLs.
+
+## Version 0.4.1 GVS Proof-of-Origin findings
+
+Observed on 2026-09-01 for `M7lc1UVf-VE`:
+
+- The Android player response still returned itag 140 with a signed URL and known
+  content length.
+- A 1,024-byte range returned HTTP 206, but an unbounded request returned HTTP 403.
+- A first large range could succeed while a later range was rejected. Refreshing the
+  Android player URL did not make the complete transfer usable.
+- The public visionOS player response returned 25 adaptive formats. Its selected itag
+  140 URL returned HTTP 200 for an ordinary request and completed the entire transfer.
+- The resulting source converted to MP3 successfully through the normal v0.4 pipeline.
+
+The important correction is that a signed URL and a successful small probe no longer
+prove that a format is fully downloadable. Current YouTube clients can require a GVS
+Proof-of-Origin token bound to the video or session. V0.4.1 does not generate or bypass
+that attestation. It uses a public client whose current policy does not require it and
+fails visibly if that assumption changes.
+
+Engineering references consulted for this change:
+
+- <https://github.com/yt-dlp/yt-dlp/wiki/Po-Token-Guide>
+- <https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/youtube/_base.py>
+
+The reference implementation was used to identify the protocol concept and current
+client policy. `myyt` retains its own small player-profile and transfer implementation.

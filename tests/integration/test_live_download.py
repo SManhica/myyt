@@ -11,15 +11,17 @@ from myyt.youtube.selector import select_best_audio
 
 pytestmark = pytest.mark.integration
 _SHORT_PUBLIC_VIDEO = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+_GVS_REGRESSION_VIDEO = "https://www.youtube.com/watch?v=M7lc1UVf-VE"
 
 
 @pytest.mark.skipif(
     os.environ.get("MYYT_RUN_INTEGRATION") != "1",
     reason="set MYYT_RUN_INTEGRATION=1 to access live YouTube",
 )
-def test_download_complete_short_public_audio_source(tmp_path: Path) -> None:
-    player_info = YouTubeExtractor().extract_player(_SHORT_PUBLIC_VIDEO)
+def test_download_complete_public_audio_source(tmp_path: Path) -> None:
+    player_info = YouTubeExtractor().extract_player(_GVS_REGRESSION_VIDEO)
     selected = select_best_audio(player_info.formats)
+    assert player_info.player_client == "VISIONOS"
     destination = tmp_path / f"source.{selected.container or 'media'}"
 
     downloaded = HTTPDownloader().download(

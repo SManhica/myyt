@@ -31,22 +31,18 @@ class ResolvedPlayerResponse:
 
 _PLAYER_CLIENTS = (
     PlayerClientProfile(
-        name="ANDROID",
-        version="20.10.38",
-        header_name="3",
-        user_agent="com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
-        fields={"androidSdkVersion": 30},
-    ),
-    PlayerClientProfile(
-        name="IOS",
-        version="20.10.4",
-        header_name="5",
-        user_agent="com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X)",
+        name="VISIONOS",
+        version="1.02",
+        header_name="101",
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+        ),
         fields={
             "deviceMake": "Apple",
-            "deviceModel": "iPhone16,2",
-            "osName": "iPhone",
-            "osVersion": "18.3.1.22D72",
+            "deviceModel": "RealityDevice17,1",
+            "osName": "visionOS",
+            "osVersion": "26.5.23O471",
         },
     ),
 )
@@ -60,11 +56,8 @@ class YouTubePlayer:
         self,
         video_id: str,
         watch_html: str,
-        initial_response: Mapping[str, Any],
+        _initial_response: Mapping[str, Any],
     ) -> ResolvedPlayerResponse:
-        if _has_direct_audio_url(initial_response):
-            return ResolvedPlayerResponse(initial_response, "WEB")
-
         config = extract_web_client_config(watch_html)
         if config is None:
             raise FormatExtractionError(
@@ -97,6 +90,7 @@ class YouTubePlayer:
             "clientVersion": profile.version,
             "hl": "en",
             "gl": "US",
+            "userAgent": profile.user_agent,
             **profile.fields,
         }
         if config.visitor_data:

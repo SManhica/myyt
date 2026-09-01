@@ -13,6 +13,7 @@ from myyt.config import (
     DEFAULT_HTTP_RETRIES,
     DEFAULT_HTTP_TIMEOUT,
     DEFAULT_MEDIA_CHUNK_SIZE,
+    DEFAULT_MEDIA_RANGE_SIZE,
     DEFAULT_USER_AGENT,
 )
 from myyt.exceptions import DownloadError, MediaURLExpiredError
@@ -34,6 +35,7 @@ class HTTPDownloader:
         timeout: float = DEFAULT_HTTP_TIMEOUT,
         retries: int = DEFAULT_HTTP_RETRIES,
         chunk_size: int = DEFAULT_MEDIA_CHUNK_SIZE,
+        range_size: int = DEFAULT_MEDIA_RANGE_SIZE,
         user_agent: str = DEFAULT_USER_AGENT,
         opener: Callable[..., object] = urlopen,
         sleeper: Callable[[float], None] = time.sleep,
@@ -45,9 +47,12 @@ class HTTPDownloader:
             raise ValueError("retries cannot be negative")
         if chunk_size <= 0:
             raise ValueError("chunk size must be positive")
+        if range_size <= 0:
+            raise ValueError("range size must be positive")
         self.timeout = timeout
         self.retries = retries
         self.chunk_size = chunk_size
+        self.range_size = range_size
         self.user_agent = user_agent
         self._opener = opener
         self._sleeper = sleeper
@@ -105,77 +110,118 @@ class HTTPDownloader:
             offset = destination.stat().st_size if destination.exists() else 0
         except OSError as exc:
             raise DownloadError(f"cannot inspect partial download: {exc}") from exc
+        if expected_length is not None and offset > expected_length:
+            raise DownloadError(
+                f"partial media file is larger than the expected {expected_length} bytes"
+            )
+        if expected_length is not None and offset == expected_length:
+            self._notify(progress, offset, expected_length, started, done=True)
+            return offset
 
-        headers = {"Accept": "*/*", "User-Agent": self.user_agent}
-        if offset:
-            headers["Range"] = f"bytes={offset}-"
-        request = Request(url, headers=headers, method="GET")
-
-        try:
-            response_context = self._opener(request, timeout=self.timeout)
-        except HTTPError as exc:
-            if exc.code in _EXPIRED_STATUS:
-                exc.close()
-                raise MediaURLExpiredError(f"media URL was rejected with HTTP {exc.code}") from exc
-            if exc.code == 416 and expected_length is not None and offset == expected_length:
-                exc.close()
-                self._notify(progress, offset, expected_length, started, done=True)
-                return offset
-            if exc.code not in _RETRYABLE_STATUS:
-                exc.close()
-                raise DownloadError(f"media request failed with HTTP {exc.code}") from exc
-            exc.close()
-            raise
-
-        with response_context as response:
-            status = getattr(response, "status", None)
-            if status is None:
-                status = response.getcode()
-            if status in _EXPIRED_STATUS:
-                raise MediaURLExpiredError(f"media URL was rejected with HTTP {status}")
-            if status not in {200, 206}:
-                if status in _RETRYABLE_STATUS:
-                    raise _IncompleteTransfer(f"retryable HTTP {status}")
-                raise DownloadError(f"media request failed with HTTP {status}")
-
-            resumed = offset > 0 and status == 206
-            if resumed and _content_range_start(response.headers) != offset:
-                try:
-                    destination.unlink(missing_ok=True)
-                except OSError as exc:
-                    raise DownloadError(f"cannot reset invalid partial media file: {exc}") from exc
-                raise _IncompleteTransfer("server returned an incompatible content range")
-            if offset > 0 and status == 200:
-                offset = 0
-            mode = "ab" if resumed else "wb"
-            total = _response_total(response.headers, offset, expected_length)
-            downloaded = offset
+        while True:
+            range_end = (
+                min(offset + self.range_size - 1, expected_length - 1)
+                if expected_length is not None
+                else None
+            )
+            headers = {"Accept": "*/*", "User-Agent": self.user_agent}
+            if range_end is not None:
+                headers["Range"] = f"bytes={offset}-{range_end}"
+            elif offset:
+                headers["Range"] = f"bytes={offset}-"
+            request = Request(url, headers=headers, method="GET")
 
             try:
-                output = destination.open(mode)
-            except OSError as exc:
-                raise DownloadError(f"cannot open temporary media file: {exc}") from exc
+                response_context = self._opener(request, timeout=self.timeout)
+            except HTTPError as exc:
+                if exc.code in _EXPIRED_STATUS:
+                    exc.close()
+                    raise MediaURLExpiredError(
+                        f"media URL was rejected with HTTP {exc.code} while requesting "
+                        f"{headers.get('Range', 'the full response')}; the URL may be expired "
+                        "or require client playback proof"
+                    ) from exc
+                if exc.code == 416 and expected_length is not None and offset == expected_length:
+                    exc.close()
+                    self._notify(progress, offset, expected_length, started, done=True)
+                    return offset
+                if exc.code not in _RETRYABLE_STATUS:
+                    exc.close()
+                    raise DownloadError(f"media request failed with HTTP {exc.code}") from exc
+                exc.close()
+                raise
 
-            with output:
-                while True:
-                    chunk = response.read(self.chunk_size)
-                    if not chunk:
-                        break
+            with response_context as response:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = response.getcode()
+                if status in _EXPIRED_STATUS:
+                    raise MediaURLExpiredError(f"media URL was rejected with HTTP {status}")
+                if status not in {200, 206}:
+                    if status in _RETRYABLE_STATUS:
+                        raise _IncompleteTransfer(f"retryable HTTP {status}")
+                    raise DownloadError(f"media request failed with HTTP {status}")
+
+                if status == 206 and _content_range_start(response.headers) != offset:
                     try:
-                        output.write(chunk)
+                        destination.unlink(missing_ok=True)
                     except OSError as exc:
-                        raise DownloadError(f"cannot write temporary media file: {exc}") from exc
-                    downloaded += len(chunk)
-                    self._notify(progress, downloaded, total, started, done=False)
+                        raise DownloadError(
+                            f"cannot reset invalid partial media file: {exc}"
+                        ) from exc
+                    raise _IncompleteTransfer("server returned an incompatible content range")
+                resumed = offset > 0 and status == 206
+                if offset > 0 and status == 200:
+                    offset = 0
+                mode = "ab" if resumed else "wb"
+                total = _response_total(response.headers, offset, expected_length)
+                downloaded = offset
 
-        if total is not None and downloaded < total:
-            raise _IncompleteTransfer(f"connection ended at {downloaded} of {total} bytes")
-        if expected_length is not None and downloaded < expected_length:
-            raise _IncompleteTransfer(
-                f"connection ended at {downloaded} of {expected_length} expected bytes"
+                try:
+                    output = destination.open(mode)
+                except OSError as exc:
+                    raise DownloadError(f"cannot open temporary media file: {exc}") from exc
+
+                with output:
+                    while True:
+                        chunk = response.read(self.chunk_size)
+                        if not chunk:
+                            break
+                        try:
+                            output.write(chunk)
+                        except OSError as exc:
+                            raise DownloadError(
+                                f"cannot write temporary media file: {exc}"
+                            ) from exc
+                        downloaded += len(chunk)
+                        self._notify(progress, downloaded, total, started, done=False)
+
+            if expected_length is None:
+                if total is not None and downloaded < total:
+                    raise _IncompleteTransfer(
+                        f"connection ended at {downloaded} of {total} bytes"
+                    )
+                self._notify(progress, downloaded, total, started, done=True)
+                return downloaded
+
+            requested_stop = (
+                range_end + 1
+                if status == 206 and range_end is not None
+                else expected_length
             )
-        self._notify(progress, downloaded, total or expected_length, started, done=True)
-        return downloaded
+            if downloaded < requested_stop:
+                raise _IncompleteTransfer(
+                    f"connection ended at {downloaded} of {requested_stop} requested bytes"
+                )
+            if downloaded > expected_length:
+                raise DownloadError(
+                    f"server returned {downloaded} bytes, exceeding the expected "
+                    f"{expected_length} bytes"
+                )
+            if downloaded >= expected_length:
+                self._notify(progress, downloaded, expected_length, started, done=True)
+                return downloaded
+            offset = downloaded
 
     def _notify(
         self,

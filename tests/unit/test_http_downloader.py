@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from myyt.exceptions import MediaURLExpiredError
+from myyt.exceptions import DownloadError, MediaURLExpiredError
 from myyt.download.http import HTTPDownloader
 
 
@@ -96,9 +96,60 @@ def test_resumes_after_recoverable_read_failure(tmp_path: Path) -> None:
         sleeper=lambda _: None,
     )
 
-    assert downloader.download("https://media.example.test/audio", destination) == 10
+    assert downloader.download(
+        "https://media.example.test/audio",
+        destination,
+        expected_length=10,
+    ) == 10
     assert destination.read_bytes() == b"abcdefghij"
-    assert requests[1].get_header("Range") == "bytes=4-"
+    assert requests[0].get_header("Range") == "bytes=0-9"
+    assert requests[1].get_header("Range") == "bytes=4-9"
+
+
+def test_uses_sequential_bounded_ranges_when_length_is_known(tmp_path: Path) -> None:
+    responses = iter(
+        [
+            FakeResponse(
+                b"abcd",
+                status=206,
+                headers={"Content-Length": "4", "Content-Range": "bytes 0-3/10"},
+            ),
+            FakeResponse(
+                b"efgh",
+                status=206,
+                headers={"Content-Length": "4", "Content-Range": "bytes 4-7/10"},
+            ),
+            FakeResponse(
+                b"ij",
+                status=206,
+                headers={"Content-Length": "2", "Content-Range": "bytes 8-9/10"},
+            ),
+        ]
+    )
+    requests = []
+
+    def opener(request, *, timeout):
+        requests.append(request)
+        return next(responses)
+
+    destination = tmp_path / "audio.part"
+    downloader = HTTPDownloader(
+        chunk_size=2,
+        range_size=4,
+        opener=opener,
+    )
+
+    assert downloader.download(
+        "https://media.example.test/audio",
+        destination,
+        expected_length=10,
+    ) == 10
+    assert destination.read_bytes() == b"abcdefghij"
+    assert [request.get_header("Range") for request in requests] == [
+        "bytes=0-3",
+        "bytes=4-7",
+        "bytes=8-9",
+    ]
 
 
 def test_restarts_when_server_ignores_range(tmp_path: Path) -> None:
@@ -142,3 +193,15 @@ def test_maps_403_to_expired_media_url(tmp_path: Path) -> None:
 
     with pytest.raises(MediaURLExpiredError, match="HTTP 403"):
         downloader.download("https://media.example.test/audio", tmp_path / "audio.part")
+
+
+def test_rejects_response_larger_than_expected_length(tmp_path: Path) -> None:
+    response = FakeResponse(b"too-long", headers={"Content-Length": "8"})
+    downloader = HTTPDownloader(opener=lambda *_args, **_kwargs: response)
+
+    with pytest.raises(DownloadError, match="exceeding the expected"):
+        downloader.download(
+            "https://media.example.test/audio",
+            tmp_path / "audio.part",
+            expected_length=4,
+        )

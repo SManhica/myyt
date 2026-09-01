@@ -30,7 +30,7 @@ class StubClient:
         return self.response
 
 
-def test_uses_android_player_when_web_response_has_no_audio_url() -> None:
+def test_uses_non_token_required_player_for_direct_audio() -> None:
     client = StubClient(json.loads(fixture("player_android_formats.json")))
     initial = {
         "streamingData": {
@@ -47,17 +47,18 @@ def test_uses_android_player_when_web_response_has_no_audio_url() -> None:
         initial,
     )
 
-    assert resolved.client_name == "ANDROID"
+    assert resolved.client_name == "VISIONOS"
     _, payload, params, headers = client.calls[0]
-    assert payload["context"]["client"]["clientName"] == "ANDROID"
+    assert payload["context"]["client"]["clientName"] == "VISIONOS"
+    assert payload["context"]["client"]["userAgent"].startswith("Mozilla/5.0")
     assert "contentCheckOk" not in payload
     assert "racyCheckOk" not in payload
     assert params["key"] == "fixture-player-key"
-    assert headers["X-YouTube-Client-Name"] == "3"
+    assert headers["X-YouTube-Client-Name"] == "101"
 
 
-def test_keeps_web_response_when_direct_audio_is_already_usable() -> None:
-    client = StubClient({})
+def test_does_not_trust_web_media_url_without_gvs_token_context() -> None:
+    client = StubClient(json.loads(fixture("player_android_formats.json")))
     initial = {
         "streamingData": {
             "adaptiveFormats": [
@@ -70,10 +71,14 @@ def test_keeps_web_response_when_direct_audio_is_already_usable() -> None:
         }
     }
 
-    resolved = YouTubePlayer(client=client).resolve("M7lc1UVf-VE", "", initial)
+    resolved = YouTubePlayer(client=client).resolve(
+        "M7lc1UVf-VE",
+        fixture("watch_page_formats.html"),
+        initial,
+    )
 
-    assert resolved.client_name == "WEB"
-    assert client.calls == []
+    assert resolved.client_name == "VISIONOS"
+    assert len(client.calls) == 1
 
 
 def test_reports_missing_client_configuration() -> None:

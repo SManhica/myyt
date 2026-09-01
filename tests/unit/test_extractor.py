@@ -105,6 +105,6 @@ def test_extract_player_combines_metadata_and_normalized_formats() -> None:
     )
 
     assert player_info.video.title == "Player format fixture"
-    assert player_info.player_client == "ANDROID"
+    assert player_info.player_client == "VISIONOS"
     assert {media_format.itag for media_format in player_info.formats} == {18, 137, 140, 251}
     assert player_info.dash_manifest_url == "https://manifest.example.test/dash.mpd"

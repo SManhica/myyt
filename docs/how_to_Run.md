@@ -1,6 +1,6 @@
 # How to Run and Test
 
-This guide covers `myyt` 0.4.0 on Windows PowerShell, Linux/macOS shells, Docker,
+This guide covers `myyt` 0.4.1 on Windows PowerShell, Linux/macOS shells, Docker,
 and Linux VPS hosts. Run commands from the repository root unless stated otherwise.
 
 ## 1. Environment setup
@@ -154,7 +154,7 @@ myyt --version
 Expected version:
 
 ```text
-myyt 0.4.0
+myyt 0.4.1
 ```
 
 For runtime-only installation, omit the development extra:
@@ -305,7 +305,7 @@ The top level is an array. Duration is normalized seconds; optional fields can b
 ```json
 {
   "video": {"video_id": "M7lc1UVf-VE", "title": "..."},
-  "player_client": "ANDROID",
+  "player_client": "VISIONOS",
   "dash_manifest_url": null,
   "hls_manifest_url": null,
   "formats": [
@@ -343,7 +343,7 @@ labels, and audio quality. `content_length` is bytes and `expires_at` is a Unix 
 ```json
 {
   "video": {"video_id": "M7lc1UVf-VE", "title": "..."},
-  "player_client": "ANDROID",
+  "player_client": "VISIONOS",
   "format": {"itag": 251, "audio_codec": "opus", "media_url": "https://..."}
 }
 ```
@@ -477,6 +477,15 @@ python -m pip install -e ".[dev]"
 myyt --version
 ```
 
+If Windows Application Control blocks the generated `myyt.exe` launcher, use the
+equivalent module entry point and recreate/install the environment from a normal
+non-administrator PowerShell session when policy permits:
+
+```powershell
+python -m myyt --version
+python -m myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
+```
+
 ### HTTP 403, 429, timeouts, or connection failures
 
 - Confirm outbound HTTPS and DNS access.
@@ -493,7 +502,7 @@ fixture/parser rather than falling back to another downloader.
 
 ### `no player client returned a directly usable audio URL`
 
-The public WEB/ANDROID/IOS response behavior may have changed, or the content may not
+The public WEB/VISIONOS response behavior may have changed, or the content may not
 be normally public in the current region. Check `docs/YOUTUBE_INTERNALS.md` and update
 client profiles/fixtures after confirming the response shape.
 
@@ -508,6 +517,13 @@ Media URLs expire. `download` automatically re-extracts once after media HTTP 40
 410. For a URL obtained from `bestaudio` or `formats`, extract it again immediately
 before your own transfer. Persistent rejection can indicate rate limiting, geography,
 or access controls and is not bypassed.
+
+If `myyt --version` reports 0.4.0, upgrade to 0.4.1. YouTube now applies GVS
+Proof-of-Origin token requirements to direct media from some public player clients.
+V0.4.1 avoids treating those Android/iOS URLs as downloadable and uses a current
+non-token-required public client profile. Persistent 403 responses can mean YouTube
+changed that policy again; run the live format/download tests and update the player
+profiles rather than reducing the request to tiny byte probes.
 
 ### `FFmpeg was not found on PATH`
 

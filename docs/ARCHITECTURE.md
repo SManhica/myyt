@@ -1,6 +1,6 @@
 # Architecture
 
-## Version 0.4 boundaries
+## Version 0.4.1 boundaries
 
 The implementation deliberately creates modules only when they own a real
 responsibility; roadmap placeholders are not created as empty files.
@@ -64,11 +64,12 @@ The CLI never exposes either one as stable application data.
 
 ### `myyt.youtube.player`
 
-Answers: "Which public player response gives us directly usable audio URLs?" It first
-accepts a usable WEB response. When the WEB response contains metadata/SABR without
-ordinary URLs, it calls isolated ANDROID and IOS public player profiles in order. The
+Answers: "Which public player response gives us directly usable audio URLs?" The WEB,
+Android, and iOS clients can expose URLs that now require a GVS Proof-of-Origin token;
+the presence of a URL alone is therefore insufficient. V0.4.1 requests an isolated
+public visionOS profile whose current GVS policy does not require that token. The
 module owns profile versions, headers, and response suitability checks. It does not
-parse fields into formats or rank audio.
+generate attestation tokens, parse fields into formats, or rank audio.
 
 ### `myyt.youtube.formats`
 
@@ -87,7 +88,8 @@ downloader knowledge.
 
 Answers: "Given a direct media URL, how are its bytes transferred?" `HTTPDownloader`
 streams bounded chunks to a file, reports normalized progress, retries recoverable
-failures, resumes a partial file with `Range`, validates the returned content range,
+failures, uses bounded byte ranges when length is known, resumes partial files,
+validates the returned content range,
 and distinguishes expired/rejected URLs from ordinary transfer failures. It knows
 nothing about YouTube metadata, format selection, or FFmpeg.
 

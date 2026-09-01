@@ -1,11 +1,11 @@
 # myyt
 
 `myyt` is a YouTube-only metadata extraction and media downloading project written
-from scratch in Python. Version 0.4 adds resumable media transfer and FFmpeg MP3
+from scratch in Python. Version 0.4.1 adds resumable media transfer and FFmpeg MP3
 post-processing to the metadata, search, player-format, and best-audio foundation.
 It does not import, wrap, or invoke yt-dlp or another downloader.
 
-## Current capabilities (v0.4)
+## Current capabilities (v0.4.1)
 
 - Parse `youtube.com/watch`, `youtu.be`, and `youtube.com/shorts` URLs, plus common
   mobile, live, and embed variants.
@@ -17,6 +17,8 @@ It does not import, wrap, or invoke yt-dlp or another downloader.
 - Normalize muxed, adaptive audio, and adaptive video formats from player responses.
 - Obtain direct public media URLs through an isolated player-client fallback when the
   WEB response exposes SABR metadata without per-format URLs.
+- Prefer a current public player profile whose direct media does not require a GVS
+  Proof-of-Origin token; token-requiring Android/iOS URLs are not treated as usable.
 - Rank and select the best directly usable audio format.
 - Download media incrementally with bounded retries and HTTP range resume.
 - Refresh an expiring or rejected media URL through fresh player extraction.

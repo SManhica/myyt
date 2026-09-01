@@ -150,6 +150,32 @@ Status: implemented.
   code 7; temporary files are removed.
 - Persistent YouTube HTTP 429 responses remain visible as network failures.
 - Manifest-only live content can still lack a directly downloadable selected format.
+- The original 0.4.0 Android/iOS fallback considered a signed URL usable without
+  accounting for current GVS Proof-of-Origin enforcement. Some URLs allowed small
+  range probes but rejected full downloads with HTTP 403.
+
+## 0.4.1 — GVS 403 compatibility fix
+
+Status: implemented.
+
+### Implements
+
+- Replaces the token-requiring Android/iOS download fallback with a current public
+  visionOS player profile whose GVS media currently does not require a PO token.
+- Stops trusting a direct WEB URL merely because the field exists.
+- Adds the player user agent to both request headers and the Innertube client context.
+- Uses sequential bounded byte ranges when content length is known, with range-start
+  validation and normal resume behavior.
+- Reports the rejected range and possible playback-proof requirement on HTTP 403/410.
+- Reproduces and verifies the formerly failing `M7lc1UVf-VE` command end to end.
+
+### Current limitations
+
+- `myyt` does not generate BotGuard, DroidGuard, or iOSGuard PO tokens. If YouTube
+  begins enforcing a GVS token for the selected visionOS profile, extraction must
+  either add a properly isolated attestation implementation or choose another
+  confirmed public transport.
+- Player-client policy is undocumented and volatile; live tests remain essential.
 
 ### Next milestone: 1.0
 
