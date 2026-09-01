@@ -12,13 +12,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from myyt.config import DEFAULT_HTTP_RETRIES, DEFAULT_HTTP_TIMEOUT, DEFAULT_USER_AGENT
 from myyt.exceptions import NetworkError
 
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/128.0.0.0 Safari/537.36"
-)
 _RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
 
 
@@ -38,8 +34,8 @@ class YouTubeClient:
     def __init__(
         self,
         *,
-        timeout: float = 20.0,
-        retries: int = 2,
+        timeout: float = DEFAULT_HTTP_TIMEOUT,
+        retries: int = DEFAULT_HTTP_RETRIES,
         user_agent: str = DEFAULT_USER_AGENT,
         opener: Callable[..., HTTPResponse] = urlopen,
         sleeper: Callable[[float], None] = time.sleep,

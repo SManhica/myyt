@@ -1,11 +1,11 @@
 # myyt
 
 `myyt` is a YouTube-only metadata extraction and media downloading project written
-from scratch in Python. Version 0.3 provides metadata, search, player-format
-extraction, and explicit best-audio selection. It does not import, wrap, or invoke
-yt-dlp or another downloader.
+from scratch in Python. Version 0.4 adds resumable media transfer and FFmpeg MP3
+post-processing to the metadata, search, player-format, and best-audio foundation.
+It does not import, wrap, or invoke yt-dlp or another downloader.
 
-## Current capabilities (v0.3)
+## Current capabilities (v0.4)
 
 - Parse `youtube.com/watch`, `youtu.be`, and `youtube.com/shorts` URLs, plus common
   mobile, live, and embed variants.
@@ -18,18 +18,25 @@ yt-dlp or another downloader.
 - Obtain direct public media URLs through an isolated player-client fallback when the
   WEB response exposes SABR metadata without per-format URLs.
 - Rank and select the best directly usable audio format.
+- Download media incrementally with bounded retries and HTTP range resume.
+- Refresh an expiring or rejected media URL through fresh player extraction.
+- Sanitize cross-platform filenames, avoid overwrites, and clean temporary files.
+- Convert selected audio to MP3 through a separately managed FFmpeg process.
+- Report transfer progress to stderr while keeping the final path on stdout.
 - Emit readable terminal output or JSON-only stdout.
 - Run deterministic fixture-based tests; live tests are opt-in.
 
-Full media downloading, FFmpeg processing, and binary stdout streaming are
-intentionally not implemented yet.
+Binary media streaming to stdout and manifest-specific fragment transfer are
+intentionally deferred to v1.0.
 
 ## Requirements
 
 - Python 3.11 or newer
+- FFmpeg on `PATH` for `myyt download`
 - `pytest` for development and tests
 
-The runtime through v0.3 uses only the Python standard library.
+The Python runtime uses only the standard library. FFmpeg is an external executable,
+not a Python extraction dependency.
 
 ## Installation
 
@@ -53,11 +60,14 @@ myyt search "Coldplay Yellow"
 myyt search "Coldplay Yellow" --limit 5 --json
 myyt formats "https://youtu.be/M7lc1UVf-VE" --json
 myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json
+myyt download "https://youtu.be/jNQXAC9IVRw"
+myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
 ```
 
-JSON mode writes exactly one JSON document to stdout: an object for `info` and an
-array for `search`. Errors and diagnostics are written to stderr and failures return
-a non-zero exit status.
+Commands that accept `--json` write exactly one JSON document to stdout: an object
+for `info`, `formats`, and `bestaudio`, and an array for `search`. `download` writes
+only the completed absolute path to stdout. Errors, diagnostics, and progress are
+written to stderr and failures return a non-zero exit status.
 
 ## Tests
 

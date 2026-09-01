@@ -108,18 +108,57 @@ Status: implemented.
 - Expired URLs return upstream HTTP errors and must be re-extracted manually.
 - Private, account-gated, CAPTCHA, and access-controlled content is not bypassed.
 
-### Next milestone: 0.4
+## 0.4.0 — Downloader and FFmpeg
 
-- Add chunked HTTP media transfer without loading full files into RAM.
-- Add retry, timeout, progress, cancellation, and partial-file cleanup behavior.
-- Add filename sanitization and safe output paths.
-- Add FFmpeg discovery, subprocess management, and MP3 post-processing.
-- Re-extract formats when a selected media URL expires before/during transfer.
-- Add fragment transfer architecture where direct range download is insufficient.
+Status: implemented.
 
-## 0.4 — Downloader and FFmpeg
+### Implements
 
-Status: not started.
+- `myyt download URL`, `-o/--output`, `--audio-format mp3`, and `--no-progress`
+- Chunked HTTP transfer without loading complete media into memory
+- Bounded retries, timeout handling, partial-file range resume, and range validation
+- Automatic restart when an origin ignores a range request
+- Pre-transfer refresh for URLs near expiry and one re-extraction after HTTP 403/410
+- Same-itag continuation when possible and safe restart when selection changes
+- Cross-platform filename sanitization, reserved-name handling, and collision suffixes
+- Per-operation temporary directories and cleanup on success, failure, or cancellation
+- FFmpeg preflight discovery, MP3 conversion, stderr capture, exit-code mapping, and
+  termination
+- Terminal progress on stderr and final absolute output path on stdout
+- Immutable `DownloadResult` for application-layer results
+- Unit coverage for transfer, retry/resume, progress, filenames, orchestration, CLI,
+  FFmpeg success/failure, URL refresh, and cleanup
+- Opt-in live full-source and MP3 integration-test structure
+- Docker image with FFmpeg installed
+
+### Current limitations
+
+- Only MP3 output is supported.
+- A download uses an intermediate source file plus an MP3 output; v0.4 does not pipe
+  media directly through FFmpeg.
+- Direct HTTP formats are supported. DASH/HLS manifest expansion and segment-specific
+  download scheduling are deferred.
+- Only one media-URL re-extraction is attempted after an explicit 403/410 rejection.
+- Cookies, authenticated content, private videos, paywalls, CAPTCHAs, and DRM are not
+  bypassed or supported.
+- `stream` and its binary-stdout contract remain deferred to v1.0.
+
+### Known failures
+
+- Missing FFmpeg raises a dedicated error with exit code 8.
+- Disk, permission, unsupported transport, and exhausted transfer failures use exit
+  code 7; temporary files are removed.
+- Persistent YouTube HTTP 429 responses remain visible as network failures.
+- Manifest-only live content can still lack a directly downloadable selected format.
+
+### Next milestone: 1.0
+
+- Add `myyt stream URL` with media bytes only on stdout and diagnostics on stderr.
+- Add configurable retry/timeout settings, structured stderr logging, and stable exit
+  and JSON integration contracts.
+- Refresh media URLs during long-running streams where safe.
+- Add manifest/fragment downloading for content without a direct HTTP representation.
+- Make subprocess and broken-pipe behavior robust for Node.js -> FFmpeg pipelines.
 
 ## 1.0 — Robust streaming and application integration
 

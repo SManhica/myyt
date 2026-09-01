@@ -175,3 +175,72 @@ unusable rather than guessed. The verified ANDROID/IOS fallback currently avoids
 3. Add a format URL containing `n` and verify it is not selected.
 4. Add an unknown codec fixture and inspect the normalized fallback behavior.
 5. Convert an `expires_at` epoch to a timezone-aware Python `datetime`.
+
+## Version 0.4 — Downloader and FFmpeg
+
+### Concepts introduced
+
+- Binary streaming in bounded chunks instead of whole-file buffering
+- Resumable HTTP transfers and byte ranges
+- Separation between extraction, selection, transport, and post-processing
+- Temporary-resource ownership and cleanup guarantees
+- Cross-platform filename safety and collision handling
+- Child-process lifecycle, exit codes, and diagnostic channels
+- Progress as data separated from progress rendering
+- Refreshing volatile capabilities such as signed media URLs
+
+### Important Python APIs used
+
+- `pathlib.Path` for explicit filesystem operations
+- `tempfile.TemporaryDirectory` for scoped intermediate files
+- `os.replace` for final same-filesystem publication
+- `urllib.request.Request` with the HTTP `Range` header
+- `http.client.IncompleteRead` for interrupted-response detection
+- `subprocess.Popen`, `communicate`, `terminate`, and `kill` for FFmpeg management
+- `shutil.which` for executable discovery
+- `time.monotonic` for elapsed transfer time and `time.time` for URL expiry
+- `unicodedata.normalize` for stable filename normalization
+
+### Important networking concepts
+
+A response body can end early even after the server accepted a request. The downloader
+compares transferred bytes with `Content-Length`, `Content-Range`, or the expected
+format length. A retry sends `Range: bytes=N-` for the verified partial length. It
+appends only when the server returns HTTP 206 with a matching range start. If the
+server returns HTTP 200, the local file is safely restarted instead.
+
+HTTP 403 and 410 have special meaning for a direct YouTube media URL: the signed URL
+may have expired or become invalid. The generic downloader reports that state; the
+YouTube-aware service re-extracts once and resumes the same itag when possible. Other
+retryable statuses and transient socket failures use bounded backoff.
+
+### How this version works internally
+
+`DownloadService` extracts `PlayerInfo`, runs the pure audio selector, and checks the
+selected URL's expiry. It creates a temporary directory inside the destination so the
+final move remains on one filesystem. `HTTPDownloader` writes the source incrementally.
+`FFmpegProcessor` converts that source to MP3. Only after successful conversion does
+the service choose a collision-free name and publish the result. Leaving the scope
+removes all intermediate files on success, error, or cancellation.
+
+Progress callbacks receive byte counts, elapsed time, throughput, and ETA. The CLI
+renders progress and FFmpeg status on stderr. Stdout contains only the completed
+absolute path, which remains easy for another process to consume.
+
+### Functions and classes worth studying
+
+- `HTTPDownloader.download`: bounded retry orchestration
+- `HTTPDownloader._transfer`: range-aware incremental transfer
+- `TransferProgress` and `ProgressReporter`: data/presentation separation
+- `sanitize_filename` and `available_output_path`: filesystem boundary hardening
+- `DownloadService.download`: use-case orchestration and cleanup ownership
+- `DownloadService._download_with_refresh`: expiring-URL recovery
+- `FFmpegProcessor.convert_to_mp3`: subprocess lifecycle and error mapping
+
+### Suggested exercises
+
+1. Add a fake response that ends early twice, then succeeds, and trace each range.
+2. Compare interactive and redirected stderr progress behavior.
+3. Add filename cases for Unicode normalization and Windows device names.
+4. Replace the fake FFmpeg process with a tiny controlled helper executable in a test.
+5. Design a segment model for HLS without coupling it to YouTube metadata.

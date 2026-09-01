@@ -1,0 +1,9 @@
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/128.0.0.0 Safari/537.36"
+)
+DEFAULT_HTTP_TIMEOUT = 20.0
+DEFAULT_HTTP_RETRIES = 2
+DEFAULT_MEDIA_CHUNK_SIZE = 64 * 1024
+MEDIA_URL_REFRESH_MARGIN = 60

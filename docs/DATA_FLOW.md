@@ -93,24 +93,54 @@ parse_streaming_formats --> tuple[MediaFormat, ...]
          bestaudio command --> human details / selected-format JSON
 ```
 
-Future downloaders will receive the selected `MediaFormat`; they will not parse
-YouTube metadata or duplicate selection rules.
+The v0.4 downloader receives the selected `MediaFormat`; it does not parse YouTube
+metadata or duplicate selection rules.
 
-## Planned later flow
+## Version 0.4 download
 
 ```text
-CLI / application process
+CLI download URL + output directory
     |
     v
+DownloadService
+    |
+    +--> YouTubeExtractor.extract_player --> PlayerInfo
+    |                                           |
+    |                                           v
+    |                                  select_best_audio
+    |                                           |
+    |                         expires soon? ----+----> re-extract once
+    |                                           |
+    v                                           v
+temporary source file <-- HTTPDownloader <-- signed media URL
+    |
+    +--> chunked writes + Range resume
+    +--> TransferProgress --> stderr renderer
+    +--> HTTP 403/410 --> re-extract once --> same itag or safe restart
+    |
+    v
+FFmpegProcessor --> temporary MP3
+    |
+    v
+collision-free final path --> stdout
+```
+
+Search is a sibling entry path into normalized `SearchResult` objects. Format
+selection remains a pure decision over normalized formats. The generic downloader
+knows only a URL, expected length, destination, and progress callback. Temporary
+source and failed FFmpeg output are removed when the service scope exits.
+
+## Planned v1.0 streaming flow
+
+```text
 YouTube extraction --> normalized formats --> audio selector
     |
     v
-media downloader --> binary stdout
+media downloader --> binary stdout only
     |
     v
 Node.js child process --> FFmpeg stdin --> MP3 --> Express response
 ```
 
-Search is a sibling entry path into normalized `SearchResult` objects. Format
-selection is now a pure decision over normalized formats. Downloaders will receive
-media URLs/protocol information without parsing YouTube metadata.
+The v0.4 `download` command does not claim this contract. It writes a final path to
+stdout; `stream` will introduce the binary-stdout interface in v1.0.

@@ -49,3 +49,23 @@ class NoSuitableFormatError(MyytError):
     """No available format satisfies the requested selection policy."""
 
     exit_code = 6
+
+
+class DownloadError(MyytError):
+    """Media bytes could not be transferred or finalized."""
+
+    exit_code = 7
+
+
+class MediaURLExpiredError(DownloadError):
+    """The selected temporary media URL is no longer accepted upstream."""
+
+
+class FFmpegError(MyytError):
+    """FFmpeg discovery or post-processing failed."""
+
+    exit_code = 8
+
+
+class FFmpegNotFoundError(FFmpegError):
+    """No usable FFmpeg executable was found."""

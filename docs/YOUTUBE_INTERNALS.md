@@ -178,4 +178,53 @@ This is a declared application policy, not a fact supplied by YouTube.
   additional `MediaFormat` entries yet.
 - Live-only content that has no direct audio representation can therefore fail
   selection.
-- URL refresh is not automatic until the downloader/streaming layers exist.
+- V0.3 exposes expiry but does not refresh URLs; v0.4 adds bounded refresh in the
+  download orchestration layer.
+
+## Version 0.4 transfer observations
+
+V0.4 builds on the v0.3 live observation that a selected direct Android audio URL
+accepted a byte-range request and reported HTTP 206. The downloader does not assume
+that every origin will honor resume: it validates `Content-Range`, restarts safely on
+HTTP 200, and fails rather than appending bytes from an incompatible range.
+
+Observed in the live integration environment on 2026-09-01, the same public short
+video path successfully transferred an entire selected audio representation and its
+reported byte length matched the completed file. A separate end-to-end run converted
+the source into a non-empty MP3 and left no `.myyt-*` temporary directory.
+
+The adaptive formats commonly selected by `myyt` may have `initRange` and
+`indexRange`, meaning their MP4/WebM container is internally fragmented and
+range-addressable. This does not necessarily require issuing one request per media
+fragment. When YouTube provides a direct signed URL for the complete representation,
+v0.4 transfers that resource as one resumable HTTP file and lets FFmpeg demux it.
+
+### Expiry and refresh policy
+
+The `expire` query value normalized in v0.3 is used before transfer. If it falls
+within the configured safety margin, the service obtains a fresh player response
+before downloading. A media-origin HTTP 403 or 410 triggers one additional player
+extraction. The same itag is preferred so a compatible partial transfer can continue;
+if that representation disappears, the selector runs again and the partial file is
+discarded before using a different format.
+
+This recovery policy is an implementation decision, not a guarantee that every 403
+means expiration. Account gates, regional restrictions, or upstream policy can also
+produce rejection, and v0.4 does not bypass any of them. The refresh attempt is
+bounded so persistent failures remain visible.
+
+### Post-processing boundary
+
+YouTube supplies the source representation, not the requested MP3. FFmpeg reads the
+complete selected audio or muxed source and creates MP3 with `libmp3lame`. It is not
+used to discover YouTube URLs or choose formats. Consequently, a transfer can succeed
+while post-processing fails; these are reported as separate error classes and exit
+codes.
+
+### Still unconfirmed or deferred
+
+- Manifest-only DASH/HLS content needs manifest parsing and segment-specific tests.
+- Long transfers may require more than one URL refresh; v0.4 performs only one after
+  an explicit rejection.
+- Player signature/`n` transforms remain deferred unless public client responses stop
+  providing usable signed URLs.

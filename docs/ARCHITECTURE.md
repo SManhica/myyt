@@ -1,20 +1,27 @@
 # Architecture
 
-## Version 0.3 boundaries
+## Version 0.4 boundaries
 
 The implementation deliberately creates modules only when they own a real
 responsibility; roadmap placeholders are not created as empty files.
 
 ### `myyt.models`
 
-`VideoInfo`, `SearchResult`, `MediaFormat`, and `PlayerInfo` are normalized public
-results. Raw YouTube dictionaries do not cross their extraction boundaries. Models
-are immutable so selection and future download code cannot alter extraction results.
+`VideoInfo`, `SearchResult`, `MediaFormat`, `PlayerInfo`, and `DownloadResult` are
+normalized public results. Raw YouTube dictionaries do not cross their extraction
+boundaries. Models are immutable so selection and transfer code cannot alter
+extraction results.
 
 ### `myyt.exceptions`
 
 Expected failures have domain-specific types and stable process exit codes. Low-level
 network and JSON errors are translated before they reach the CLI.
+
+### `myyt.config`
+
+Holds shared default timeout, retry, user-agent, chunk-size, and URL-refresh values.
+It contains no environment loading or mutable global state; a fuller user-facing
+configuration system remains a v1.0 concern.
 
 ### `myyt.youtube.url_parser`
 
@@ -76,6 +83,40 @@ Answers: "Which available format is the best usable audio?" `select_best_audio` 
 pure function over `MediaFormat` values. It has no network, YouTube-response, CLI, or
 downloader knowledge.
 
+### `myyt.download.http`
+
+Answers: "Given a direct media URL, how are its bytes transferred?" `HTTPDownloader`
+streams bounded chunks to a file, reports normalized progress, retries recoverable
+failures, resumes a partial file with `Range`, validates the returned content range,
+and distinguishes expired/rejected URLs from ordinary transfer failures. It knows
+nothing about YouTube metadata, format selection, or FFmpeg.
+
+### `myyt.download.progress`
+
+Defines transfer progress data and the terminal renderer. Interactive terminals get
+rate-limited in-place updates; redirected stderr receives only a final summary. This
+keeps transport accounting separate from presentation.
+
+### `myyt.download.filenames`
+
+Sanitizes untrusted video titles for Windows, Linux, and macOS path rules, handles
+reserved Windows device names, limits component length, and chooses collision-free
+output names without overwriting an existing download.
+
+### `myyt.download.service`
+
+Owns the v0.4 use case: extract, select, refresh expiring URLs, transfer to an isolated
+temporary directory, invoke FFmpeg, atomically move the result into place, and return
+`DownloadResult`. It is the only component that coordinates YouTube extraction,
+generic transfer, and post-processing.
+
+### `myyt.media.ffmpeg`
+
+Discovers the FFmpeg executable before network transfer and converts one local input
+into MP3. It captures stderr, validates the exit code and output, and terminates the
+child on cancellation.
+It contains no YouTube, selection, HTTP, or filename policy.
+
 ### `myyt.cli`
 
 Parses commands, invokes the extractor, renders human or JSON output, and maps domain
@@ -89,6 +130,14 @@ errors to process status. JSON stdout contains no diagnostics.
 
 `extractor -> formats`
 
+`cli -> download.service -> extractor/selector/download.http/media.ffmpeg`
+
+`cli -> download.progress`
+
+`download.service -> download.filenames`
+
+`download.http -> download.progress`
+
 `cli -> selector -> models`
 
 `cli -> models <- extractor/search/formats`
@@ -100,9 +149,14 @@ errors to process status. JSON stdout contains no diagnostics.
 The network layer knows nothing about normalized video models. The model knows
 nothing about HTTP or command-line concerns.
 
-## Deferred packages
+## Deferred responsibilities
 
-Downloading, fragment transfer, progress, and FFmpeg modules are absent until v0.4.
-Player-JavaScript signature and `n` transformation code is also absent because the
-verified player fallback returns signed URLs that need neither transformation. Cipher
-and `n` states remain explicit so upstream changes fail honestly.
+Direct adaptive MP4/WebM representations are fragmented containers internally, but
+their signed URLs can currently be transferred as complete range-addressable HTTP
+resources. A dedicated fragment scheduler is therefore not introduced prematurely.
+DASH/HLS manifest expansion and segment scheduling remain deferred until a tested
+content case requires them. Binary stdout streaming belongs to v1.0.
+
+Player-JavaScript signature and `n` transformation code also remains absent because
+the verified player fallback returns signed URLs that need neither transformation.
+Cipher and `n` states remain explicit so upstream changes fail honestly.

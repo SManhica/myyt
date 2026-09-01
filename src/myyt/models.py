@@ -80,3 +80,16 @@ class PlayerInfo:
             "hls_manifest_url": self.hls_manifest_url,
             "formats": [media_format.to_dict() for media_format in self.formats],
         }
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadResult:
+    output_path: str
+    video_id: str
+    title: str
+    format_id: str
+    source_bytes: int
+    audio_format: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

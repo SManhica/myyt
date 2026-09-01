@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 
 from myyt.cli import main
-from myyt.exceptions import ExtractionError, SearchError
-from myyt.models import PlayerInfo, SearchResult, VideoInfo
+from myyt.exceptions import ExtractionError, FFmpegNotFoundError, SearchError
+from myyt.models import DownloadResult, PlayerInfo, SearchResult, VideoInfo
 from myyt.youtube.formats import manifest_urls, parse_streaming_formats
 
 
@@ -62,6 +62,40 @@ class PlayerExtractor:
             dash_manifest_url=dash,
             hls_manifest_url=hls,
         )
+
+
+class SuccessfulDownloadService:
+    def download(
+        self,
+        _url,
+        *,
+        output_directory,
+        audio_format,
+        progress,
+        status,
+    ) -> DownloadResult:
+        assert output_directory == Path("downloads")
+        assert audio_format == "mp3"
+        assert progress is not None
+        assert status is None
+        return DownloadResult(
+            output_path="D:\\downloads\\Example.mp3",
+            video_id="M7lc1UVf-VE",
+            title="Example",
+            format_id="140",
+            source_bytes=100,
+            audio_format="mp3",
+        )
+
+
+class FailingDownloadService:
+    def download(self, _url, **_kwargs) -> DownloadResult:
+        raise FFmpegNotFoundError("FFmpeg missing")
+
+
+class InterruptedDownloadService:
+    def download(self, _url, **_kwargs) -> DownloadResult:
+        raise KeyboardInterrupt
 
 
 def test_json_mode_writes_only_valid_json_to_stdout(capsys) -> None:
@@ -159,3 +193,47 @@ def test_bestaudio_json_uses_explicit_selector(capsys) -> None:
     assert payload["format"]["itag"] == 251
     assert payload["format"]["audio_codec"] == "opus"
     assert payload["format"]["media_url"].startswith("https://")
+
+
+def test_download_writes_only_final_path_to_stdout_when_progress_disabled(capsys) -> None:
+    exit_code = main(
+        [
+            "download",
+            "https://youtu.be/M7lc1UVf-VE",
+            "-o",
+            "downloads",
+            "--audio-format",
+            "mp3",
+            "--no-progress",
+        ],
+        download_service=SuccessfulDownloadService(),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out == "D:\\downloads\\Example.mp3\n"
+    assert captured.err == ""
+
+
+def test_download_failure_preserves_stdout_and_exit_code(capsys) -> None:
+    exit_code = main(
+        ["download", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        download_service=FailingDownloadService(),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == FFmpegNotFoundError.exit_code
+    assert captured.out == ""
+    assert captured.err == "error: FFmpeg missing\n"
+
+
+def test_download_cancellation_returns_130_without_stdout(capsys) -> None:
+    exit_code = main(
+        ["download", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        download_service=InterruptedDownloadService(),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert captured.out == ""
+    assert captured.err == "error: cancelled\n"

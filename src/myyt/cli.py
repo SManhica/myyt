@@ -5,8 +5,11 @@ import json
 import logging
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from myyt import __version__
+from myyt.download.progress import ProgressReporter
+from myyt.download.service import DownloadService
 from myyt.exceptions import MyytError
 from myyt.models import MediaFormat, PlayerInfo, SearchResult, VideoInfo
 from myyt.youtube.extractor import YouTubeExtractor
@@ -37,6 +40,23 @@ def build_parser() -> argparse.ArgumentParser:
     bestaudio = subparsers.add_parser("bestaudio", help="select the best usable audio format")
     bestaudio.add_argument("url", help="public YouTube video URL")
     bestaudio.add_argument("--json", action="store_true", dest="as_json", help="emit JSON only")
+
+    download = subparsers.add_parser("download", help="download and convert audio to MP3")
+    download.add_argument("url", help="public YouTube video URL")
+    download.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("."),
+        help="output directory (default: current directory)",
+    )
+    download.add_argument(
+        "--audio-format",
+        choices=("mp3",),
+        default="mp3",
+        help="post-processed audio format",
+    )
+    download.add_argument("--no-progress", action="store_true", help="disable progress output")
     return parser
 
 
@@ -45,6 +65,7 @@ def main(
     *,
     extractor: YouTubeExtractor | None = None,
     searcher: YouTubeSearch | None = None,
+    download_service: DownloadService | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
@@ -66,9 +87,30 @@ def main(
                 selected = select_best_audio(player_info.formats)
                 _render_best_audio(player_info, selected, as_json=args.as_json)
             return 0
+        if args.command == "download":
+            reporter = ProgressReporter(enabled=not args.no_progress)
+            try:
+                result = (download_service or DownloadService()).download(
+                    args.url,
+                    output_directory=args.output,
+                    audio_format=args.audio_format,
+                    progress=reporter,
+                    status=(
+                        None
+                        if args.no_progress
+                        else lambda message: print(message, file=sys.stderr, flush=True)
+                    ),
+                )
+            finally:
+                reporter.close()
+            print(result.output_path)
+            return 0
     except MyytError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return exc.exit_code
+    except KeyboardInterrupt:
+        print("error: cancelled", file=sys.stderr)
+        return 130
 
     return 1
 

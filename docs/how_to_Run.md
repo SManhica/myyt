@@ -1,6 +1,6 @@
 # How to Run and Test
 
-This guide covers `myyt` 0.3.0 on Windows PowerShell, Linux/macOS shells, Docker,
+This guide covers `myyt` 0.4.0 on Windows PowerShell, Linux/macOS shells, Docker,
 and Linux VPS hosts. Run commands from the repository root unless stated otherwise.
 
 ## 1. Environment setup
@@ -11,10 +11,12 @@ Requirements:
 - Internet access to `www.youtube.com`, `youtubei` endpoints, and Google media hosts
   for live commands and integration tests.
 - Git is optional for running the source tree but useful for development.
+- FFmpeg is required for `myyt download`; metadata, search, and format commands do
+  not invoke it.
 - Docker Engine or Docker Desktop is required only for the Docker workflow.
 
 The runtime uses only Python's standard library. `pytest` is installed by the
-development extra for tests. FFmpeg is not required until v0.4.
+development extra for tests.
 
 ### Windows PowerShell
 
@@ -28,6 +30,18 @@ py -3.12 --version
 If `py` is unavailable, install Python from python.org and enable the installer's
 launcher/PATH options. A Microsoft Store `python.exe` alias can otherwise point to a
 non-installed placeholder.
+
+Install FFmpeg with a trusted Windows package or archive, add its `bin` directory to
+`PATH`, reopen PowerShell, and verify:
+
+```powershell
+winget search ffmpeg
+ffmpeg -version
+```
+
+`winget search` shows currently available package IDs; install the package you trust
+with `winget install --id PACKAGE_ID_FROM_SEARCH -e`. Keeping the package ID discovered locally
+avoids relying on a stale ID in this guide.
 
 ### Linux/macOS shell
 
@@ -44,16 +58,31 @@ sudo apt-get install -y python3 python3-venv
 
 On macOS, a current Python can be installed with python.org packages or Homebrew.
 
+Install and verify FFmpeg on Debian/Ubuntu:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+ffmpeg -version
+```
+
+On macOS with Homebrew:
+
+```sh
+brew install ffmpeg
+ffmpeg -version
+```
+
 ### Docker
 
 ```sh
 docker --version
-docker build -t myyt:0.3 .
+docker build -t myyt:0.4 .
 ```
 
 The supplied `Dockerfile` creates `/opt/myyt-venv`, adds it to `PATH`, installs the
-project plus test dependencies, and runs as a non-root user. No host Python install
-or host virtual environment is required.
+project plus test dependencies and FFmpeg, and runs as a non-root user. No host
+Python, virtual environment, or FFmpeg install is required.
 
 ## 2. Virtual environment creation and activation
 
@@ -100,9 +129,10 @@ Docker provides process isolation and the image contains a dedicated virtual
 environment. It is activated automatically through `PATH`. For an interactive shell:
 
 ```sh
-docker run --rm -it --entrypoint /bin/sh myyt:0.3
+docker run --rm -it --entrypoint /bin/sh myyt:0.4
 which python
 which myyt
+which ffmpeg
 ```
 
 Inside that shell, explicit activation is also possible:
@@ -124,7 +154,7 @@ myyt --version
 Expected version:
 
 ```text
-myyt 0.3.0
+myyt 0.4.0
 ```
 
 For runtime-only installation, omit the development extra:
@@ -133,9 +163,9 @@ For runtime-only installation, omit the development extra:
 python -m pip install -e .
 ```
 
-Docker installation happens during `docker build -t myyt:0.3 .`.
+Docker installation happens during `docker build -t myyt:0.4 .`.
 
-## 4. Running commands through v0.3
+## 4. Running commands through v0.4
 
 All examples target normal public YouTube content. Shell quoting prevents `&` and
 other URL characters from being interpreted by the shell.
@@ -190,16 +220,48 @@ myyt bestaudio "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
 The selector prefers audio-only, supported codecs, reported quality/bitrate, direct
 HTTP transport, sample rate, and known length. It does not make network requests.
 
+### `myyt download URL`
+
+FFmpeg must be available on `PATH`. The `-o/--output` value is a directory, created
+when necessary. Existing files are not overwritten; a repeated title becomes
+`Title (1).mp3`, then `Title (2).mp3`.
+
+```sh
+myyt download "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
+myyt download "https://www.youtube.com/watch?v=yKNxeF4KMsY" -o ./music --audio-format mp3 --no-progress
+```
+
+The default command reports transfer and FFmpeg status to stderr. `--no-progress`
+suppresses those status lines. On success, stdout contains only the absolute MP3 path.
+
 ### Docker command equivalents
 
 The image entry point is `myyt`, so omit the executable name after the image:
 
 ```sh
-docker run --rm myyt:0.3 info "https://youtu.be/M7lc1UVf-VE"
-docker run --rm myyt:0.3 search "Coldplay Yellow" --limit 5 --json
-docker run --rm myyt:0.3 formats "https://youtu.be/yKNxeF4KMsY" --json
-docker run --rm myyt:0.3 bestaudio "https://youtu.be/yKNxeF4KMsY" --json
+docker run --rm myyt:0.4 info "https://youtu.be/M7lc1UVf-VE"
+docker run --rm myyt:0.4 search "Coldplay Yellow" --limit 5 --json
+docker run --rm myyt:0.4 formats "https://youtu.be/yKNxeF4KMsY" --json
+docker run --rm myyt:0.4 bestaudio "https://youtu.be/yKNxeF4KMsY" --json
 ```
+
+Downloads need a bind-mounted host directory. Linux/macOS:
+
+```sh
+mkdir -p downloads
+docker run --rm -v "$PWD/downloads:/downloads" myyt:0.4 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force downloads | Out-Null
+docker run --rm -v "${PWD}/downloads:/downloads" myyt:0.4 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
+```
+
+Without a bind mount, the MP3 remains in the disposable container and is lost when
+`--rm` removes it.
 
 ## 5. Expected output shapes
 
@@ -288,6 +350,23 @@ labels, and audio quality. `content_length` is bytes and `expires_at` is a Unix 
 
 Media URLs are temporary. Do not store them as permanent application identifiers.
 
+### `download`
+
+When stderr is a terminal, progress updates reuse one line, followed by the FFmpeg
+status. Exact sizes, speed, title, and path vary:
+
+```text
+stderr: Downloaded: 100.0% 2.4 MiB/2.4 MiB 1.1 MiB/s ETA 00:00
+stderr: Processing audio with FFmpeg...
+stdout: D:\Projectos\myyt\Example title.mp3
+```
+
+On Linux/macOS, the last line is an absolute POSIX path such as
+`/home/user/myyt/downloads/Example title.mp3`. There is no `download --json` in v0.4;
+the stable machine-readable JSON contracts remain on `info`, `search`, `formats`, and
+`bestaudio`. A successful download exits 0. Transfer failures exit 7, FFmpeg failures
+exit 8, and keyboard cancellation exits 130.
+
 ## 6. Unit tests
 
 PowerShell, Linux, and macOS with the environment active:
@@ -300,8 +379,8 @@ pytest -m "not integration"
 Docker:
 
 ```sh
-docker run --rm --entrypoint pytest myyt:0.3 tests/unit
-docker run --rm --entrypoint pytest myyt:0.3 -m "not integration"
+docker run --rm --entrypoint pytest myyt:0.4 tests/unit
+docker run --rm --entrypoint pytest myyt:0.4 -m "not integration"
 ```
 
 Unit tests use local fixtures and should not access YouTube.
@@ -328,11 +407,14 @@ MYYT_RUN_INTEGRATION=1 pytest -m integration
 Docker:
 
 ```sh
-docker run --rm -e MYYT_RUN_INTEGRATION=1 --entrypoint pytest myyt:0.3 -m integration
+docker run --rm -e MYYT_RUN_INTEGRATION=1 --entrypoint pytest myyt:0.4 -m integration
 ```
 
-The v0.3 integration suite checks metadata, search continuation, multiple video
-categories, best-audio selection, and a 1 KiB HTTP range request.
+The v0.4 integration suite checks metadata, search continuation, multiple video
+categories, best-audio selection, a 1 KiB range request, a complete selected-source
+download, and an end-to-end MP3 conversion. The MP3 test skips when FFmpeg is absent.
+Live failures can also reflect regional availability, rate limiting, or a blocked
+network rather than deterministic test regressions.
 
 ## 8. Validating JSON output
 
@@ -370,7 +452,7 @@ myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json | jq -r '.format.media_url'
 ### Docker
 
 ```sh
-docker run --rm myyt:0.3 info "https://youtu.be/M7lc1UVf-VE" --json \
+docker run --rm myyt:0.4 info "https://youtu.be/M7lc1UVf-VE" --json \
   | python3 -m json.tool
 ```
 
@@ -406,7 +488,7 @@ myyt --version
 ### `player client configuration required for formats`
 
 YouTube returned a page variant without the public client configuration expected by
-v0.3. Run the unit suite, capture only non-sensitive debug structure, and update the
+v0.4. Run the unit suite, capture only non-sensitive debug structure, and update the
 fixture/parser rather than falling back to another downloader.
 
 ### `no player client returned a directly usable audio URL`
@@ -422,7 +504,31 @@ an unsupported manifest transport. `formats --json` exposes these states explici
 
 ### A saved media URL returns 403
 
-Media URLs expire. Run `bestaudio` or `formats` again immediately before transfer.
+Media URLs expire. `download` automatically re-extracts once after media HTTP 403 or
+410. For a URL obtained from `bestaudio` or `formats`, extract it again immediately
+before your own transfer. Persistent rejection can indicate rate limiting, geography,
+or access controls and is not bypassed.
+
+### `FFmpeg was not found on PATH`
+
+Install FFmpeg using the platform steps in section 1, reopen the shell, and run
+`ffmpeg -version`. If that succeeds but `myyt` still fails, confirm both commands run
+from the same shell, service account, or container. A Python package named `ffmpeg`
+does not install the required executable.
+
+### `FFmpeg failed with exit code ...`
+
+The stderr detail printed by `myyt` comes from FFmpeg. Check free disk space, source
+format support, and write permission on the output directory. The temporary source
+and incomplete MP3 are removed automatically; rerun with `formats --json` to inspect
+the selected formats if the problem is reproducible.
+
+### Output directory or temporary-file errors
+
+Pass a writable directory to `-o`. V0.4 places temporary files inside that directory,
+so the filesystem needs space for both the downloaded source and encoded MP3. It does
+not overwrite an existing MP3 and cleans the per-operation `.myyt-*` directory after
+normal completion, error, or cancellation.
 
 ### Pytest cache warning
 
@@ -440,6 +546,8 @@ ensure container bridge traffic can reach HTTPS destinations.
 ## 10. VPS/Linux notes
 
 - Run `myyt` as an unprivileged service user inside a dedicated virtual environment.
+- Install FFmpeg for that service user and verify `sudo -u <user> ffmpeg -version`, or
+  use the Docker image where FFmpeg is included.
 - Keep the checkout and virtual environment separate from web-server writable paths.
 - Permit outbound TCP 443 and working DNS; no inbound port is required by `myyt`.
 - Media URLs are short-lived. Extract immediately before the consuming process starts.
@@ -451,6 +559,8 @@ ensure container bridge traffic can reach HTTPS destinations.
 
 - Use process timeouts and inspect non-zero exit codes from Node.js or systemd.
 - Do not run concurrent retry storms after 429 responses.
-- The v0.3 commands retrieve metadata and URLs; they do not yet transfer full media,
-  invoke FFmpeg, or provide the v1.0 binary `stream` contract.
+- Budget destination space for the source representation plus MP3. Temporary files
+  live inside `-o`, which avoids cross-filesystem final moves.
+- V0.4 downloads and converts complete files but does not provide the v1.0 binary
+  `stream` contract. Do not pipe `myyt download` stdout into FFmpeg; stdout is a path.
 - Rebuild Docker images or reinstall editable environments after each version update.
