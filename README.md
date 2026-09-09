@@ -1,44 +1,35 @@
 # myyt
 
-`myyt` is a YouTube-only metadata extraction and media downloading project written
-from scratch in Python. Version 0.4.1 adds resumable media transfer and FFmpeg MP3
-post-processing to the metadata, search, player-format, and best-audio foundation.
-It does not import, wrap, or invoke yt-dlp or another downloader.
+`myyt` is a YouTube-only metadata extractor and media downloader written from
+scratch in Python. It does not import, wrap, or invoke yt-dlp or another downloader.
 
-## Current capabilities (v0.4.1)
+Version 1.0 adds a production-oriented binary streaming command to the existing
+metadata, search, format inspection, audio selection, and MP3 download features.
 
-- Parse `youtube.com/watch`, `youtu.be`, and `youtube.com/shorts` URLs, plus common
-  mobile, live, and embed variants.
-- Retrieve a public watch page through a retrying YouTube HTTP client.
-- Normalize embedded player metadata into a typed `VideoInfo` model.
-- Search public YouTube results and normalize video entries into `SearchResult`.
-- Follow first-party YouTube continuation responses when a limit needs more than the
-  initial result page.
-- Normalize muxed, adaptive audio, and adaptive video formats from player responses.
-- Obtain direct public media URLs through an isolated player-client fallback when the
-  WEB response exposes SABR metadata without per-format URLs.
-- Prefer a current public player profile whose direct media does not require a GVS
-  Proof-of-Origin token; token-requiring Android/iOS URLs are not treated as usable.
-- Rank and select the best directly usable audio format.
-- Download media incrementally with bounded retries and HTTP range resume.
-- Refresh an expiring or rejected media URL through fresh player extraction.
-- Sanitize cross-platform filenames, avoid overwrites, and clean temporary files.
-- Convert selected audio to MP3 through a separately managed FFmpeg process.
-- Report transfer progress to stderr while keeping the final path on stdout.
-- Emit readable terminal output or JSON-only stdout.
-- Run deterministic fixture-based tests; live tests are opt-in.
+## Capabilities
 
-Binary media streaming to stdout and manifest-specific fragment transfer are
-intentionally deferred to v1.0.
+- Parse common watch, short-link, Shorts, mobile, live, and embed URLs.
+- Extract normalized public video metadata and search results.
+- Resolve and normalize muxed and adaptive player formats.
+- Rank directly usable audio representations with an explicit selector.
+- Download source media incrementally with bounded retries and HTTP range resume.
+- Convert complete downloads to MP3 through a separately managed FFmpeg process.
+- Stream selected source audio bytes directly to stdout without FFmpeg or temporary
+  media files.
+- Refresh rejected media URLs while preserving byte-stream integrity.
+- Keep JSON, binary data, progress, and diagnostics on predictable output channels.
+- Run deterministic unit tests plus opt-in live integration tests.
+
+Only normally public media is in scope. Private or account-gated access, DRM,
+paywalls, CAPTCHAs, and attestation bypasses are not supported.
 
 ## Requirements
 
 - Python 3.11 or newer
-- FFmpeg on `PATH` for `myyt download`
+- FFmpeg on `PATH` only for `myyt download`
 - `pytest` for development and tests
 
-The Python runtime uses only the standard library. FFmpeg is an external executable,
-not a Python extraction dependency.
+The Python runtime uses only the standard library.
 
 ## Installation
 
@@ -55,36 +46,44 @@ python -m pip install -e ".[dev]"
 ## Usage
 
 ```console
-myyt info "https://www.youtube.com/watch?v=M7lc1UVf-VE"
 myyt info "https://youtu.be/M7lc1UVf-VE" --json
-python -m myyt info "https://www.youtube.com/shorts/M7lc1UVf-VE" --json
-myyt search "Coldplay Yellow"
 myyt search "Coldplay Yellow" --limit 5 --json
 myyt formats "https://youtu.be/M7lc1UVf-VE" --json
 myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json
-myyt download "https://youtu.be/jNQXAC9IVRw"
-myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
+myyt download "https://youtu.be/jNQXAC9IVRw" -o ./downloads
+myyt stream "https://youtu.be/jNQXAC9IVRw" --no-progress > source-audio.bin
 ```
 
-Commands that accept `--json` write exactly one JSON document to stdout: an object
-for `info`, `formats`, and `bestaudio`, and an array for `search`. `download` writes
-only the completed absolute path to stdout. Errors, diagnostics, and progress are
-written to stderr and failures return a non-zero exit status.
+`stream` stdout is a binary protocol: it contains only the selected source audio
+representation. Progress and errors go to stderr. The bytes are not transcoded and
+may use MP4/M4A or WebM according to selection. `myyt` itself creates no output file;
+a shell or consumer may choose to store the bytes. A successful, validated transfer
+exits 0; failures are non-zero. PowerShell version-specific redirection guidance is
+in the runbook linked below.
+
+Commands accepting `--json` write exactly one JSON document to stdout. `download`
+writes only the completed absolute path to stdout. These contracts make all commands
+safe to invoke from another process with stdout and stderr captured separately.
 
 ## Tests
 
 ```console
-pytest
+pytest -m "not integration"
 ```
 
-Live YouTube access is disabled by default:
+Live access is opt-in. PowerShell:
 
-```console
+```powershell
 $env:MYYT_RUN_INTEGRATION = "1"
 pytest -m integration
 ```
 
-See [docs/VERSIONS.md](docs/VERSIONS.md) for roadmap status and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details. Complete Windows,
-Linux/macOS, Docker, JSON-validation, testing, and VPS instructions are in
-[docs/how_to_Run.md](docs/how_to_Run.md).
+Linux/macOS:
+
+```sh
+MYYT_RUN_INTEGRATION=1 pytest -m integration
+```
+
+See [How to Run and Test](docs/how_to_Run.md),
+[Architecture](docs/ARCHITECTURE.md), and [Versions](docs/VERSIONS.md) for the full
+cross-platform guide, design, guarantees, limitations, and roadmap.

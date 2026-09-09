@@ -1,144 +1,129 @@
 # Data Flow
 
-## Version 0.1
+## Metadata
 
 ```text
-CLI arguments
+CLI info URL
     |
     v
 YouTubeExtractor.extract
-    |
-    +--> parse_video_url --> ParsedVideoURL
-    |
-    +--> YouTubeClient.get_text --> public YouTube watch page
-    |
-    +--> extract_initial_player_response --> player-response mapping
-    |
-    +--> normalize_video_info --> VideoInfo
-    |
+    +--> URL parser
+    +--> YouTubeClient --> public watch page
+    +--> player-response parser
     v
-CLI human renderer or JSON serializer
-    |
-    +--> stdout: requested result only
-    +--> stderr: errors/diagnostics only
+VideoInfo
+    +--> human renderer --> stdout text
+    +--> JSON renderer  --> stdout JSON
 ```
 
-The extractor asks what YouTube says about a video. It does not transfer media.
-The client handles HTTP but does not understand video metadata.
-
-## Version 0.2 search
+## Search
 
 ```text
-CLI query + limit
+CLI search QUERY
     |
     v
 YouTubeSearch.search
-    |
-    +--> YouTubeClient.get_text --> /results HTML
-    |
-    +--> ytInitialData parser --> SearchPage
-    |                                |
-    |                                +--> SearchResult values
-    |                                +--> opaque continuation token
-    |
-    +--> if more results are needed:
-           ytcfg parser --> WebClientConfig
-                              |
-                              v
-           YouTubeClient.post_json --> /youtubei/v1/search
-                              |
-                              v
-                    continuation SearchPage
-    |
-    +--> ordered deduplication + limit
-    |
+    +--> YouTubeClient --> initial public results page
+    +--> ytInitialData parser --> SearchResult values
+    +--> bounded continuation requests when needed
     v
-CLI human renderer or JSON array
+ordered, deduplicated SearchResult list --> stdout text or JSON
 ```
 
-Client configuration and continuation tokens never leave the search component. The
-CLI receives only normalized `SearchResult` instances.
-
-## Current formats and audio selection (v0.4.1)
+## Player formats and selection
 
 ```text
 CLI formats/bestaudio URL
     |
     v
 YouTubeExtractor.extract_player
-    |
-    +--> URL parser
-    +--> watch-page HTTP + initial player response
-    +--> normalize VideoInfo
-    |
+    +--> watch metadata
+    +--> public player-client resolution
+    +--> streamingData normalization
     v
-YouTubePlayer.resolve
-    |
-    +--> public ytcfg --> VISIONOS player request
-    |                       |
-    |                       +--> direct audio without GVS proof-token requirement
-    v
-response with directly usable audio URL
-    |
-    v
-parse_streaming_formats --> tuple[MediaFormat, ...]
-    |
-    +--> formats command --> human table / PlayerInfo JSON
-    |
-    +--> select_best_audio (pure, no HTTP)
-              |
-              v
-         bestaudio command --> human details / selected-format JSON
+PlayerInfo + tuple[MediaFormat, ...]
+    +--> formats renderer
+    +--> select_best_audio --> bestaudio renderer
 ```
 
-The v0.4 downloader receives the selected `MediaFormat`; it does not parse YouTube
-metadata or duplicate selection rules.
-
-## Version 0.4 download
+## Complete-file download
 
 ```text
-CLI download URL + output directory
+CLI download URL
     |
     v
 DownloadService
+    +--> extractor --> PlayerInfo
+    +--> selector --> MediaFormat
+    +--> expiry check / bounded refresh
+    v
+HTTPDownloader --> FileSink --> temporary source file
     |
-    +--> YouTubeExtractor.extract_player --> PlayerInfo
-    |                                           |
-    |                                           v
-    |                                  select_best_audio
-    |                                           |
-    |                         expires soon? ----+----> re-extract once
-    |                                           |
-    v                                           v
-temporary source file <-- HTTPDownloader <-- signed media URL
-    |
-    +--> chunked writes + Range resume
-    +--> TransferProgress --> stderr renderer
-    +--> HTTP 403/410 --> re-extract once --> same itag or safe restart
+    +--> TransferProgress --> stderr
+    v
+FFmpegProcessor --> temporary MP3 --> final collision-free path
     |
     v
-FFmpegProcessor --> temporary MP3
-    |
-    v
-collision-free final path --> stdout
+stdout: completed absolute path
 ```
 
-Search is a sibling entry path into normalized `SearchResult` objects. Format
-selection remains a pure decision over normalized formats. The generic downloader
-knows only a URL, expected length, destination, and progress callback. Temporary
-source and failed FFmpeg output are removed when the service scope exits.
+The source and processed temporary files are owned by `DownloadService`. They are
+removed on completion, error, or cancellation.
 
-## Planned v1.0 streaming flow
+## Binary stream
 
 ```text
-YouTube extraction --> normalized formats --> audio selector
+CLI stream URL
     |
     v
-media downloader --> binary stdout only
-    |
+StreamService
+    +--> extractor --> PlayerInfo
+    +--> selector --> MediaFormat
+    +--> pre-output expiry refresh when needed
     v
-Node.js child process --> FFmpeg stdin --> MP3 --> Express response
+HTTPDownloader --> BinaryStreamSink --> stdout: source media bytes only
+    |
+    +--> TransferProgress --> stderr
+    +--> diagnostics/errors --> stderr
 ```
 
-The v0.4 `download` command does not claim this contract. It writes a final path to
-stdout; `stream` will introduce the binary-stdout interface in v1.0.
+No complete media file or FFmpeg process exists on this path. Network reads are
+bounded and each chunk is written to stdout before the next is read.
+
+## Retry state transition
+
+```text
+request fails
+    |
+    +--> emitted bytes == 0
+    |       +--> normal bounded retry
+    |       +--> HTTP 403/410: refresh URL; reselection allowed
+    |
+    +--> emitted bytes == N > 0
+            +--> transient failure: request exact Range starting at N
+            |       +--> HTTP 206 + matching Content-Range: continue
+            |       +--> HTTP 200 or wrong range: fail
+            |
+            +--> HTTP 403/410: refresh URL
+                    +--> exact same representation: exact-range resume
+                    +--> changed/unverifiable representation: fail
+```
+
+Stdout cannot be rewound, so a non-zero failure after partial output is an explicit
+part of the contract. Consumers must trust exit status, not merely the presence of
+bytes.
+
+## Downstream closure
+
+```text
+stdout write/flush --> BrokenPipe / EPIPE
+    |
+    +--> stop the active transfer
+    +--> close the active HTTP response scope
+    +--> do not retry
+    +--> concise stderr diagnostic
+    +--> exit 130
+```
+
+This treats a consumer that stops reading as cancellation rather than as an upstream
+network failure.

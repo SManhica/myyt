@@ -1,6 +1,20 @@
 """YouTube-only media extraction tools."""
 
-from .models import DownloadResult, MediaFormat, PlayerInfo, SearchResult, VideoInfo
+from .models import (
+    DownloadResult,
+    MediaFormat,
+    PlayerInfo,
+    SearchResult,
+    StreamResult,
+    VideoInfo,
+)
 
-__all__ = ["DownloadResult", "MediaFormat", "PlayerInfo", "SearchResult", "VideoInfo"]
-__version__ = "0.4.1"
+__all__ = [
+    "DownloadResult",
+    "MediaFormat",
+    "PlayerInfo",
+    "SearchResult",
+    "StreamResult",
+    "VideoInfo",
+]
+__version__ = "1.0.0"

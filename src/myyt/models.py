@@ -93,3 +93,13 @@ class DownloadResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class StreamResult:
+    video_id: str
+    format_id: str
+    bytes_streamed: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

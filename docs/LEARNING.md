@@ -279,3 +279,77 @@ normally without adding an attestation token.
 2. Record full-transfer success separately from a small range probe in a live test.
 3. Design a future PO-token provider interface without implementing attestation inside
    the format parser or downloader.
+
+## Version 1.0 — Binary stdout and irreversible streams
+
+### Concepts introduced
+
+- Binary-safe standard output as a process protocol
+- Sink abstractions for sharing transport logic across destinations
+- Irreversible output and stronger recovery invariants
+- Partial writes, broken pipes, and downstream cancellation
+- Exact byte-range continuation after partial output
+- Structural compatibility checks for refreshed media representations
+- Completion validation and trustworthy process exit status
+
+### Important Python APIs used
+
+- `sys.stdout.buffer` for bytes rather than text
+- `msvcrt.setmode` with `os.O_BINARY` for Windows binary output
+- `typing.BinaryIO` and `Protocol` for narrow sink interfaces
+- `memoryview` for completing partial output writes without copying a chunk
+- `errno.EPIPE` and `BrokenPipeError` for closed-consumer detection
+- `os.dup2` and `os.devnull` to prevent interpreter-shutdown pipe noise
+- Context managers around HTTP responses for prompt cleanup
+
+### Important networking concepts
+
+HTTP retry behavior depends on whether output is reversible. A file can be truncated
+and restarted if a server ignores `Range`. Stdout cannot: bytes may already have been
+consumed elsewhere. After `N` bytes are emitted, a safe retry requests a range
+starting at `N` and accepts only HTTP 206 with a matching `Content-Range` start.
+
+HTTP 200 is valid for an initial response, but unsafe for a resume because it begins
+at byte zero. Appending it would duplicate the prefix. A mismatched 206 is similarly
+unsafe. Both cases fail explicitly.
+
+A signed media URL can be refreshed after HTTP 403 or 410. Before output, normal
+selection can run again. After output, the refreshed format must match the original
+itag, MIME type, container, codecs, audio properties, and known content length. This
+is an implementation safety policy: matching only the itag is not enough evidence to
+mix two byte sequences.
+
+### How this version works internally
+
+`StreamService` extracts a `PlayerInfo`, selects audio, and creates a
+`BinaryStreamSink` around the caller-owned output. `HTTPDownloader.transfer` performs
+the same requests, bounded reads, retries, range validation, length accounting, and
+progress callbacks used by file downloads. Only sink behavior differs.
+
+Each received chunk is written before the next network read, so normal streaming
+memory use is bounded by the configured chunk size plus library buffers. Successful
+completion flushes the output and returns `StreamResult`; the CLI deliberately emits
+no rendering of that result. A broken write becomes `StreamCancelledError`, is never
+retried, and maps to exit 130 without a traceback.
+
+### Functions and classes worth studying
+
+- `HTTPDownloader.transfer`: destination-independent retry orchestration
+- `HTTPDownloader._transfer`: exact range and completion validation
+- `FileSink` and `BinaryStreamSink`: reversible versus irreversible output policy
+- `StreamService.stream`: extraction, selection, refresh, and transfer orchestration
+- `is_exact_resume_match`: refreshed-representation safety boundary
+- `_process_binary_stdout`: platform-specific binary stdout setup
+- `_replace_process_stdout_with_devnull`: clean broken-pipe shutdown
+
+### Suggested exercises
+
+1. Make a fake output object accept only two bytes per `write` and verify the sink
+   completes the full chunk in order.
+2. Add a retry fixture whose `Content-Range` starts one byte too late and confirm that
+   no bytes from that response reach output.
+3. Compare HTTP 200 and 206 behavior before and after the first emitted byte.
+4. Pipe a short live stream into a consumer that exits after 100 bytes and inspect the
+   producer's exit status and stderr.
+5. Design a segmented sink contract without allowing already-emitted stdout bytes to
+   be reordered or repeated.

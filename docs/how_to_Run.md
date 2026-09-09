@@ -1,88 +1,69 @@
 # How to Run and Test
 
-This guide covers `myyt` 0.4.1 on Windows PowerShell, Linux/macOS shells, Docker,
-and Linux VPS hosts. Run commands from the repository root unless stated otherwise.
+This guide covers `myyt` 1.0 on Windows PowerShell, Linux/macOS shells, Docker, and
+Linux VPS hosts. Run commands from the repository root unless stated otherwise.
 
 ## 1. Environment setup
 
 Requirements:
 
 - Python 3.11 or newer; Python 3.12 is recommended.
-- Internet access to `www.youtube.com`, `youtubei` endpoints, and Google media hosts
-  for live commands and integration tests.
-- Git is optional for running the source tree but useful for development.
-- FFmpeg is required for `myyt download`; metadata, search, and format commands do
-  not invoke it.
-- Docker Engine or Docker Desktop is required only for the Docker workflow.
+- Internet access to public YouTube pages, player endpoints, and media hosts for live
+  commands and integration tests.
+- FFmpeg only for `myyt download`; `stream` emits the selected source bytes directly
+  and does not invoke FFmpeg.
+- Docker Engine or Docker Desktop only for the container workflow.
 
-The runtime uses only Python's standard library. `pytest` is installed by the
-development extra for tests.
+The Python runtime has no third-party dependencies. The development extra installs
+`pytest`.
 
 ### Windows PowerShell
 
-Check the launcher and Python version:
-
 ```powershell
 py --version
-py -3.12 --version
-```
-
-If `py` is unavailable, install Python from python.org and enable the installer's
-launcher/PATH options. A Microsoft Store `python.exe` alias can otherwise point to a
-non-installed placeholder.
-
-Install FFmpeg with a trusted Windows package or archive, add its `bin` directory to
-`PATH`, reopen PowerShell, and verify:
-
-```powershell
-winget search ffmpeg
+$PSVersionTable.PSVersion
 ffmpeg -version
 ```
 
-`winget search` shows currently available package IDs; install the package you trust
-with `winget install --id PACKAGE_ID_FROM_SEARCH -e`. Keeping the package ID discovered locally
-avoids relying on a stale ID in this guide.
+Install Python from python.org if the `py` launcher is missing. Install FFmpeg only
+when using `download`, add its `bin` directory to `PATH`, and reopen PowerShell.
+
+For direct binary redirection with `>`, use PowerShell 7.4 or newer. This repository's
+binary probe was verified on PowerShell 7.6.5. Windows PowerShell 5.1 can transform
+native output through its text pipeline; use the `Start-Process` recipe in the stream
+section instead.
 
 ### Linux/macOS shell
 
 ```sh
 python3 --version
+ffmpeg -version
 ```
 
-On Debian/Ubuntu, the virtual-environment package may be separate:
+On Debian/Ubuntu:
 
 ```sh
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv
+sudo apt-get install -y ffmpeg  # only needed for download
 ```
 
-On macOS, a current Python can be installed with python.org packages or Homebrew.
-
-Install and verify FFmpeg on Debian/Ubuntu:
-
-```sh
-sudo apt-get update
-sudo apt-get install -y ffmpeg
-ffmpeg -version
-```
-
-On macOS with Homebrew:
+On macOS, use a current python.org package or Homebrew. FFmpeg is optional unless
+running `download`:
 
 ```sh
 brew install ffmpeg
-ffmpeg -version
 ```
 
 ### Docker
 
 ```sh
 docker --version
-docker build -t myyt:0.4 .
+docker build -t myyt:1.0 .
 ```
 
-The supplied `Dockerfile` creates `/opt/myyt-venv`, adds it to `PATH`, installs the
-project plus test dependencies and FFmpeg, and runs as a non-root user. No host
-Python, virtual environment, or FFmpeg install is required.
+The image contains Python, a dedicated virtual environment, the project, tests, and
+FFmpeg. It runs as a non-root user.
 
 ## 2. Virtual environment creation and activation
 
@@ -94,20 +75,14 @@ py -3.12 -m venv .venv
 python --version
 ```
 
-If PowerShell blocks activation, allow locally created scripts for the current user:
+If activation is blocked:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-Alternatively, do not activate and invoke `.\.venv\Scripts\python.exe` and
-`.\.venv\Scripts\myyt.exe` explicitly.
-
-Deactivate with:
-
-```powershell
-deactivate
-```
+Alternatively, do not activate; use `.\.venv\Scripts\python.exe` and
+`.\.venv\Scripts\myyt.exe` explicitly. Run `deactivate` to leave the environment.
 
 ### Linux/macOS shell
 
@@ -117,33 +92,23 @@ source .venv/bin/activate
 python --version
 ```
 
-Deactivate with:
-
-```sh
-deactivate
-```
+Run `deactivate` to leave the environment.
 
 ### Docker
 
-Docker provides process isolation and the image contains a dedicated virtual
-environment. It is activated automatically through `PATH`. For an interactive shell:
+The image creates `/opt/myyt-venv` and places it on `PATH`. No host virtual
+environment is needed. To inspect it:
 
 ```sh
-docker run --rm -it --entrypoint /bin/sh myyt:0.4
+docker run --rm -it --entrypoint /bin/sh myyt:1.0
 which python
 which myyt
-which ffmpeg
-```
-
-Inside that shell, explicit activation is also possible:
-
-```sh
 . /opt/myyt-venv/bin/activate
 ```
 
 ## 3. Project installation
 
-With the PowerShell or POSIX virtual environment active:
+With the local virtual environment active:
 
 ```sh
 python -m pip install --upgrade pip
@@ -151,41 +116,39 @@ python -m pip install -e ".[dev]"
 myyt --version
 ```
 
-Expected version:
+Expected:
 
 ```text
-myyt 0.4.1
+myyt 1.0.0
 ```
 
-For runtime-only installation, omit the development extra:
+For runtime-only installation:
 
 ```sh
 python -m pip install -e .
 ```
 
-Docker installation happens during `docker build -t myyt:0.4 .`.
+If a generated launcher is blocked, every command also works through the module
+entry point:
 
-## 4. Running commands through v0.4
+```sh
+python -m myyt --version
+python -m myyt info "https://youtu.be/M7lc1UVf-VE"
+```
 
-All examples target normal public YouTube content. Shell quoting prevents `&` and
-other URL characters from being interpreted by the shell.
+## 4. Commands
+
+Quote URLs and queries on every platform.
 
 ### `myyt info URL`
 
-Human-readable examples:
-
 ```sh
 myyt info "https://www.youtube.com/watch?v=M7lc1UVf-VE"
-myyt info "https://youtu.be/dQw4w9WgXcQ"
-myyt info "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+myyt info "https://youtu.be/dQw4w9WgXcQ" --json
+myyt info "https://www.youtube.com/shorts/jNQXAC9IVRw" --json
 ```
 
-JSON examples:
-
-```sh
-myyt info "https://youtu.be/M7lc1UVf-VE" --json
-myyt info "https://www.youtube.com/watch?v=yKNxeF4KMsY" --json
-```
+Human mode prints labeled metadata. JSON mode prints one normalized object.
 
 ### `myyt search QUERY`
 
@@ -195,78 +158,112 @@ myyt search "Python networking tutorial" --limit 5
 myyt search "Mozambique music" --limit 25 --json
 ```
 
-The limit must be between 1 and 100. Requests beyond the initial page use bounded
-first-party continuation calls.
+`--limit` accepts 1 through 100. JSON mode prints one array of normalized videos.
 
 ### `myyt formats URL`
 
 ```sh
-myyt formats "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+myyt formats "https://youtu.be/M7lc1UVf-VE"
 myyt formats "https://youtu.be/yKNxeF4KMsY" --json
 myyt formats "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
 ```
 
-Human output is a compact table. JSON output includes normalized formats and their
-expiring media URLs.
+Human mode prints a format table. JSON mode includes video data, player client,
+manifests, formats, codecs, lengths, and temporary media URLs.
 
 ### `myyt bestaudio URL`
 
 ```sh
-myyt bestaudio "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+myyt bestaudio "https://youtu.be/M7lc1UVf-VE"
 myyt bestaudio "https://youtu.be/yKNxeF4KMsY" --json
 myyt bestaudio "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
 ```
 
-The selector prefers audio-only, supported codecs, reported quality/bitrate, direct
-HTTP transport, sample rate, and known length. It does not make network requests.
+The pure selector prefers usable audio-only representations, supported codecs,
+quality/bitrate, direct transport, sample rate, and known length.
 
 ### `myyt download URL`
 
-FFmpeg must be available on `PATH`. The `-o/--output` value is a directory, created
-when necessary. Existing files are not overwritten; a repeated title becomes
-`Title (1).mp3`, then `Title (2).mp3`.
+FFmpeg must be on `PATH`. The output option is a directory and is created when
+needed. Existing files are not overwritten.
 
 ```sh
-myyt download "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+myyt download "https://youtu.be/jNQXAC9IVRw"
 myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
-myyt download "https://www.youtube.com/watch?v=yKNxeF4KMsY" -o ./music --audio-format mp3 --no-progress
+myyt download "https://youtu.be/yKNxeF4KMsY" -o ./music --audio-format mp3 --no-progress
 ```
 
-The default command reports transfer and FFmpeg status to stderr. `--no-progress`
-suppresses those status lines. On success, stdout contains only the absolute MP3 path.
+Progress and FFmpeg diagnostics go to stderr. Success writes only the final absolute
+MP3 path to stdout.
+
+### `myyt stream URL`
+
+`stream` writes source media bytes only to stdout. It does not produce MP3, print a
+title, append a newline, invoke FFmpeg, or create a complete-media temporary file.
+The selected source is commonly MP4/M4A or WebM; inspect `bestaudio --json` when the
+container matters.
+
+Linux/macOS examples:
+
+```sh
+myyt stream "https://youtu.be/jNQXAC9IVRw" --no-progress > source-audio.bin
+myyt stream "https://youtu.be/M7lc1UVf-VE" 2>stream.log | wc -c
+myyt stream "https://youtu.be/yKNxeF4KMsY" --no-progress | sha256sum
+```
+
+Use `set -o pipefail` in scripts so a producer failure is not hidden by the final
+consumer's status.
+
+PowerShell 7.4 or newer preserves native bytes through native redirection:
+
+```powershell
+myyt stream "https://youtu.be/jNQXAC9IVRw" --no-progress > .\source-audio.bin
+$stream = Start-Process -FilePath "myyt" -ArgumentList @("stream", "https://youtu.be/M7lc1UVf-VE") -RedirectStandardOutput ".\source-audio.bin" -RedirectStandardError ".\stream.log" -Wait -PassThru
+$stream.ExitCode
+myyt stream "https://youtu.be/yKNxeF4KMsY" --no-progress > .\another-source.bin; $LASTEXITCODE
+```
+
+For Windows PowerShell 5.1, do not use its `>` or pipeline for binary media. Use
+native process redirection:
+
+```powershell
+$stream = Start-Process -FilePath ".\.venv\Scripts\myyt.exe" -ArgumentList @("stream", "https://youtu.be/jNQXAC9IVRw", "--no-progress") -RedirectStandardOutput ".\source-audio.bin" -RedirectStandardError ".\stream.log" -Wait -PassThru
+if ($stream.ExitCode -ne 0) { throw "myyt failed with exit code $($stream.ExitCode)" }
+```
+
+Always check the producer exit code. A non-empty output after a non-zero exit may be
+partial and must be discarded.
 
 ### Docker command equivalents
 
-The image entry point is `myyt`, so omit the executable name after the image:
+The image entry point is `myyt`:
 
 ```sh
-docker run --rm myyt:0.4 info "https://youtu.be/M7lc1UVf-VE"
-docker run --rm myyt:0.4 search "Coldplay Yellow" --limit 5 --json
-docker run --rm myyt:0.4 formats "https://youtu.be/yKNxeF4KMsY" --json
-docker run --rm myyt:0.4 bestaudio "https://youtu.be/yKNxeF4KMsY" --json
+docker run --rm myyt:1.0 info "https://youtu.be/M7lc1UVf-VE" --json
+docker run --rm myyt:1.0 search "Coldplay Yellow" --limit 5 --json
+docker run --rm myyt:1.0 formats "https://youtu.be/M7lc1UVf-VE" --json
+docker run --rm myyt:1.0 bestaudio "https://youtu.be/M7lc1UVf-VE" --json
+docker run --rm myyt:1.0 stream "https://youtu.be/jNQXAC9IVRw" --no-progress > source-audio.bin
 ```
 
-Downloads need a bind-mounted host directory. Linux/macOS:
+Mount an output directory for complete downloads. Linux/macOS:
 
 ```sh
 mkdir -p downloads
-docker run --rm -v "$PWD/downloads:/downloads" myyt:0.4 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
+docker run --rm -v "$PWD/downloads:/downloads" myyt:1.0 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
 ```
 
-Windows PowerShell:
+PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force downloads | Out-Null
-docker run --rm -v "${PWD}/downloads:/downloads" myyt:0.4 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
+docker run --rm -v "${PWD}/downloads:/downloads" myyt:1.0 download "https://youtu.be/jNQXAC9IVRw" -o /downloads
 ```
 
-Without a bind mount, the MP3 remains in the disposable container and is lost when
-`--rm` removes it.
+On PowerShell older than 7.4, apply the same native-redirection warning to `docker
+run ... stream`.
 
-## 5. Expected output shapes
-
-Human output is intended for terminals. JSON schemas are intended for Node.js and
-other processes. JSON stdout contains no diagnostics; errors go to stderr.
+## 5. Expected output shapes and exit behavior
 
 ### `info --json`
 
@@ -284,9 +281,6 @@ other processes. JSON stdout contains no diagnostics; errors go to stderr.
 
 ### `search --json`
 
-The top level is an array. Duration is normalized seconds; optional fields can be
-`null`.
-
 ```json
 [
   {
@@ -300,76 +294,65 @@ The top level is an array. Duration is normalized seconds; optional fields can b
 ]
 ```
 
-### `formats --json`
+### `formats --json` and `bestaudio --json`
 
 ```json
 {
   "video": {"video_id": "M7lc1UVf-VE", "title": "..."},
   "player_client": "VISIONOS",
-  "dash_manifest_url": null,
-  "hls_manifest_url": null,
   "formats": [
     {
       "format_id": "140",
       "itag": 140,
       "mime_type": "audio/mp4",
-      "container": "m4a",
-      "codecs": ["mp4a.40.2"],
       "audio_codec": "mp4a.40.2",
-      "video_codec": null,
-      "bitrate": 131585,
-      "sample_rate": 44100,
-      "channels": 2,
       "content_length": 3560000,
-      "has_audio": true,
-      "has_video": false,
-      "media_url": "https://...expiring URL...",
-      "protocol": "https",
-      "adaptive": true,
-      "fragmented": true,
-      "is_ciphered": false,
-      "requires_n_transform": false,
+      "media_url": "https://...",
       "expires_at": 2000000000
     }
   ]
 }
 ```
 
-The actual format object also contains average bitrate, dimensions, FPS, quality
-labels, and audio quality. `content_length` is bytes and `expires_at` is a Unix epoch.
-
-### `bestaudio --json`
-
-```json
-{
-  "video": {"video_id": "M7lc1UVf-VE", "title": "..."},
-  "player_client": "VISIONOS",
-  "format": {"itag": 251, "audio_codec": "opus", "media_url": "https://..."}
-}
-```
-
-Media URLs are temporary. Do not store them as permanent application identifiers.
+`bestaudio --json` uses the same video/client envelope with a single `format` object
+instead of `formats`. Media URLs are temporary and must not be stored as identities.
 
 ### `download`
 
-When stderr is a terminal, progress updates reuse one line, followed by the FFmpeg
-status. Exact sizes, speed, title, and path vary:
-
 ```text
-stderr: Downloaded: 100.0% 2.4 MiB/2.4 MiB 1.1 MiB/s ETA 00:00
+stderr: Downloaded: 100.0% 2.4 MiB/2.4 MiB ...
 stderr: Processing audio with FFmpeg...
-stdout: D:\Projectos\myyt\Example title.mp3
+stdout: /absolute/path/Example title.mp3
 ```
 
-On Linux/macOS, the last line is an absolute POSIX path such as
-`/home/user/myyt/downloads/Example title.mp3`. There is no `download --json` in v0.4;
-the stable machine-readable JSON contracts remain on `info`, `search`, `formats`, and
-`bestaudio`. A successful download exits 0. Transfer failures exit 7, FFmpeg failures
-exit 8, and keyboard cancellation exits 130.
+### `stream`
+
+```text
+stdout: raw binary source-media bytes, with no text framing
+stderr: progress and diagnostics, or empty with --no-progress on success
+```
+
+Do not open stream output as text and do not parse it as JSON. Exit 0 is emitted only
+after validated completion and output flush. Extraction/selection failures keep
+stdout empty. A failure after partial transfer is non-zero and the partial bytes are
+not a valid success artifact. A stream with no verifiable format or HTTP byte length
+is refused. Downstream closure returns 130.
+
+Important exit codes:
+
+- 0: success
+- 2: invalid URL/query/argument
+- 3: YouTube network failure
+- 4: video unavailable
+- 5: extraction/format-response failure
+- 6: no suitable format
+- 7: media transfer or unsafe-resume failure
+- 8: FFmpeg failure for `download`
+- 130: keyboard cancellation or downstream stream closure
 
 ## 6. Unit tests
 
-PowerShell, Linux, and macOS with the environment active:
+PowerShell, Linux, or macOS with the environment active:
 
 ```sh
 pytest tests/unit
@@ -379,16 +362,18 @@ pytest -m "not integration"
 Docker:
 
 ```sh
-docker run --rm --entrypoint pytest myyt:0.4 tests/unit
-docker run --rm --entrypoint pytest myyt:0.4 -m "not integration"
+docker run --rm --entrypoint pytest myyt:1.0 tests/unit
+docker run --rm --entrypoint pytest myyt:1.0 -m "not integration"
 ```
 
-Unit tests use local fixtures and should not access YouTube.
+Unit tests use local fixtures and fake HTTP responses. The stream suite covers exact
+binary output, channel isolation, bounded reads, retry/resume rules, URL refresh,
+format changes, truncation, pipe closure, and response cleanup. Existing download
+tests run in the same suite.
 
 ## 7. Live/integration tests
 
-Live tests make public YouTube and media-host requests. They can fail because of
-network policy, regional availability, rate limiting, or upstream changes.
+Live tests are opt-in because they contact public YouTube and media hosts.
 
 Windows PowerShell:
 
@@ -407,176 +392,159 @@ MYYT_RUN_INTEGRATION=1 pytest -m integration
 Docker:
 
 ```sh
-docker run --rm -e MYYT_RUN_INTEGRATION=1 --entrypoint pytest myyt:0.4 -m integration
+docker run --rm -e MYYT_RUN_INTEGRATION=1 --entrypoint pytest myyt:1.0 -m integration
 ```
 
-The v0.4 integration suite checks metadata, search continuation, multiple video
-categories, best-audio selection, a 1 KiB range request, a complete selected-source
-download, and an end-to-end MP3 conversion. The MP3 test skips when FFmpeg is absent.
-Live failures can also reflect regional availability, rate limiting, or a blocked
-network rather than deterministic test regressions.
+The live suite covers metadata, search continuation, format selection, range access,
+complete source transfer, optional MP3 processing, complete short-content streaming,
+and process-level binary redirection. Failures can reflect regional availability,
+network policy, rate limits, or upstream changes.
 
-## 8. Validating JSON output
+## 8. Shell-level stream validation
 
-### Windows PowerShell
+Linux/macOS:
+
+```sh
+set -o pipefail
+myyt stream "https://youtu.be/jNQXAC9IVRw" --no-progress > source-audio.bin
+test -s source-audio.bin
+echo $?
+```
+
+PowerShell 7.4+:
 
 ```powershell
-$result = myyt search "Coldplay Yellow" --limit 3 --json | ConvertFrom-Json
-$result.Count
-$result[0].video_id
-
-$audio = myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json | ConvertFrom-Json
-$audio.format.media_url
+myyt stream "https://youtu.be/jNQXAC9IVRw" --no-progress > .\source-audio.bin
+if ($LASTEXITCODE -ne 0) { Remove-Item .\source-audio.bin; throw "stream failed" }
+(Get-Item .\source-audio.bin).Length
 ```
 
-`ConvertFrom-Json` failing means stdout was not valid JSON or the command failed.
-Inspect `$LASTEXITCODE` and rerun without a pipeline to see stderr.
+For older Windows PowerShell, use the `Start-Process` binary-redirection recipe from
+section 4 and inspect `$stream.ExitCode`.
 
-### Linux/macOS
+## 9. Validating JSON output
 
-With Python only:
+PowerShell:
+
+```powershell
+$info = myyt info "https://youtu.be/M7lc1UVf-VE" --json | ConvertFrom-Json
+$info.video_id
+$results = myyt search "Coldplay Yellow" --limit 3 --json | ConvertFrom-Json
+$results.Count
+$audio = myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json | ConvertFrom-Json
+$audio.format.itag
+```
+
+Linux/macOS with Python:
 
 ```sh
 myyt info "https://youtu.be/M7lc1UVf-VE" --json | python -m json.tool
 myyt formats "https://youtu.be/M7lc1UVf-VE" --json | python -m json.tool >/dev/null
-echo $?
+myyt search "Coldplay Yellow" --limit 3 --json | python -m json.tool
 ```
 
-With `jq` installed:
+With `jq`:
 
 ```sh
 myyt search "Coldplay Yellow" --limit 3 --json | jq 'length'
-myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json | jq -r '.format.media_url'
+myyt bestaudio "https://youtu.be/M7lc1UVf-VE" --json | jq -r '.format.itag'
 ```
 
-### Docker
+Docker:
 
 ```sh
-docker run --rm myyt:0.4 info "https://youtu.be/M7lc1UVf-VE" --json \
-  | python3 -m json.tool
+docker run --rm myyt:1.0 info "https://youtu.be/M7lc1UVf-VE" --json | python3 -m json.tool
 ```
 
-## 9. Common errors and troubleshooting
+JSON parsing failure means the command failed or stdout was contaminated. Inspect the
+producer exit code and stderr separately.
 
-### `python`, `python3`, or `py` not found
+## 10. Common errors and troubleshooting
 
-Install Python 3.11+ and reopen the shell. On Windows, try `py` even when `python`
-is not on PATH. On Linux, install both Python and the distribution's `venv` package.
+### Python or launcher not found
 
-### PowerShell cannot run `Activate.ps1`
+Install Python 3.11+, reopen the shell, activate the intended environment, and
+reinstall with `python -m pip install -e ".[dev]"`. If `myyt` is blocked or stale,
+use `python -m myyt` and verify `myyt --version` reports 1.0.0.
 
-Use `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or invoke executables under
-`.\.venv\Scripts` directly without activation.
+### PowerShell stream output is corrupted or larger than expected
 
-### `myyt` reports an old version
+Check `$PSVersionTable.PSVersion`. Direct `>` and native pipelines are binary-safe for
+the documented workflow on PowerShell 7.4+. With Windows PowerShell 5.1, use
+`Start-Process -RedirectStandardOutput`; do not pass media bytes through its text
+pipeline. Never use `Out-File`, `Set-Content`, or `Tee-Object` for media bytes.
 
-Ensure the intended virtual environment is active, then reinstall:
+### Stream produced some bytes but exited non-zero
 
-```sh
-python -m pip install -e ".[dev]"
-myyt --version
-```
+Discard the partial output. This can mean exhausted network retries, unexpected EOF,
+an ignored/mismatched resume range, a changed representation after URL refresh, or
+another transfer error. Partial stdout is never promoted to success.
 
-If Windows Application Control blocks the generated `myyt.exe` launcher, use the
-equivalent module entry point and recreate/install the environment from a normal
-non-administrator PowerShell session when policy permits:
+### Exit 130 or downstream consumer closed
 
-```powershell
-python -m myyt --version
-python -m myyt download "https://youtu.be/M7lc1UVf-VE" -o ./downloads
-```
+The reading process closed the pipe, or the user cancelled. `myyt` stops without
+retrying the write. This is expected when a consumer intentionally reads only a
+prefix. If closure was unexpected, inspect the consumer and stderr logs.
 
-### HTTP 403, 429, timeouts, or connection failures
+### HTTP 403, 410, 429, timeout, or connection failure
 
-- Confirm outbound HTTPS and DNS access.
-- Avoid rapid repeated live runs; 429 indicates rate limiting.
-- Check corporate/VPS proxy and firewall policy.
-- Retry later for transient failures.
-- Do not attempt CAPTCHA or access-control bypasses.
+- Confirm DNS and outbound HTTPS access.
+- Avoid rapid retry storms; HTTP 429 indicates rate limiting.
+- Extract immediately before transfer because signed media URLs expire.
+- `stream` and `download` refresh once after 403/410; persistent rejection remains a
+  visible failure.
+- Check proxy, firewall, geography, and hosting-provider egress policy.
 
-### `player client configuration required for formats`
+The project does not bypass access controls or attestation requirements.
 
-YouTube returned a page variant without the public client configuration expected by
-v0.4. Run the unit suite, capture only non-sensitive debug structure, and update the
-fixture/parser rather than falling back to another downloader.
+### No directly usable audio format
 
-### `no player client returned a directly usable audio URL`
+Run `myyt formats URL --json` and inspect protocol, cipher, and transform flags. The
+content may be manifest-only or current public player behavior may have changed.
+Update fixtures and the appropriate extraction layer rather than silently invoking a
+different downloader.
 
-The public WEB/VISIONOS response behavior may have changed, or the content may not
-be normally public in the current region. Check `docs/YOUTUBE_INTERNALS.md` and update
-client profiles/fixtures after confirming the response shape.
+### FFmpeg missing or failed
 
-### `no directly usable audio format is available`
-
-Available URLs may be encrypted, require an unimplemented `n` transform, or use only
-an unsupported manifest transport. `formats --json` exposes these states explicitly.
-
-### A saved media URL returns 403
-
-Media URLs expire. `download` automatically re-extracts once after media HTTP 403 or
-410. For a URL obtained from `bestaudio` or `formats`, extract it again immediately
-before your own transfer. Persistent rejection can indicate rate limiting, geography,
-or access controls and is not bypassed.
-
-If `myyt --version` reports 0.4.0, upgrade to 0.4.1. YouTube now applies GVS
-Proof-of-Origin token requirements to direct media from some public player clients.
-V0.4.1 avoids treating those Android/iOS URLs as downloadable and uses a current
-non-token-required public client profile. Persistent 403 responses can mean YouTube
-changed that policy again; run the live format/download tests and update the player
-profiles rather than reducing the request to tiny byte probes.
-
-### `FFmpeg was not found on PATH`
-
-Install FFmpeg using the platform steps in section 1, reopen the shell, and run
-`ffmpeg -version`. If that succeeds but `myyt` still fails, confirm both commands run
-from the same shell, service account, or container. A Python package named `ffmpeg`
-does not install the required executable.
-
-### `FFmpeg failed with exit code ...`
-
-The stderr detail printed by `myyt` comes from FFmpeg. Check free disk space, source
-format support, and write permission on the output directory. The temporary source
-and incomplete MP3 are removed automatically; rerun with `formats --json` to inspect
-the selected formats if the problem is reproducible.
+This affects `download`, not `stream`. Install the FFmpeg executable on `PATH` and
+run `ffmpeg -version`. Inspect the stderr detail, disk space, source support, and
+output-directory permissions.
 
 ### Output directory or temporary-file errors
 
-Pass a writable directory to `-o`. V0.4 places temporary files inside that directory,
-so the filesystem needs space for both the downloaded source and encoded MP3. It does
-not overwrite an existing MP3 and cleans the per-operation `.myyt-*` directory after
-normal completion, error, or cancellation.
+Pass a writable directory to `download -o`. Complete-file downloading needs space
+for the source and MP3. `stream` does not use that directory or create a complete
+media file.
 
-### Pytest cache warning
+### Docker cannot reach the network
 
-A read-only workspace can prevent `.pytest_cache` updates without failing tests. Use:
+If `docker build` cannot connect to the Docker API or named pipe, start Docker Desktop
+or the Docker daemon first. A working `docker --version` client alone does not prove
+that the daemon is running.
 
-```sh
-pytest -p no:cacheprovider
-```
+Configure daemon/Desktop proxy and DNS settings and ensure container bridge traffic
+can reach outbound TCP 443.
 
-### Docker build or live commands cannot reach the network
+## 11. VPS/Linux usage notes
 
-Configure Docker Desktop/daemon proxy and DNS settings. On restrictive VPS hosts,
-ensure container bridge traffic can reach HTTPS destinations.
-
-## 10. VPS/Linux notes
-
-- Run `myyt` as an unprivileged service user inside a dedicated virtual environment.
-- Install FFmpeg for that service user and verify `sudo -u <user> ffmpeg -version`, or
-  use the Docker image where FFmpeg is included.
-- Keep the checkout and virtual environment separate from web-server writable paths.
-- Permit outbound TCP 443 and working DNS; no inbound port is required by `myyt`.
-- Media URLs are short-lived. Extract immediately before the consuming process starts.
-- JSON is stdout-only and diagnostics are stderr-only, so capture them separately:
+- Run as an unprivileged service user in a dedicated virtual environment or container.
+- Permit outbound DNS and TCP 443; no inbound port is required.
+- FFmpeg is unnecessary for `stream` and required only for `download`.
+- Keep stdout and stderr separate. For example:
 
   ```sh
-  myyt bestaudio "$VIDEO_URL" --json >result.json 2>myyt-error.log
+  set -o pipefail
+  myyt stream "$VIDEO_URL" 2>myyt-stream.log | consumer-command
+  producer_status=${PIPESTATUS[0]}
+  test "$producer_status" -eq 0
   ```
 
-- Use process timeouts and inspect non-zero exit codes from Node.js or systemd.
-- Do not run concurrent retry storms after 429 responses.
-- Budget destination space for the source representation plus MP3. Temporary files
-  live inside `-o`, which avoids cross-filesystem final moves.
-- V0.4 downloads and converts complete files but does not provide the v1.0 binary
-  `stream` contract. Do not pipe `myyt download` stdout into FFmpeg; stdout is a path.
-- Rebuild Docker images or reinstall editable environments after each version update.
+- Treat any non-zero producer exit as failure even if the consumer received bytes.
+- Supervisors should forward SIGINT/SIGTERM and allow HTTP sockets to close.
+- Apply an outer process timeout appropriate to media duration and network speed.
+- Avoid concurrent retry storms after rate limiting.
+- Do not cache signed media URLs; run extraction immediately before consuming bytes.
+- Redirect binary stdout directly to a native pipe or file, never through a text
+  logger. Capture stderr in a separate log.
+- Rebuild the Docker image or reinstall the editable environment after version
+  updates.

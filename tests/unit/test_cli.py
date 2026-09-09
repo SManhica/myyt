@@ -1,8 +1,16 @@
 import json
+from io import BytesIO
 from pathlib import Path
 
 from myyt.cli import main
-from myyt.exceptions import ExtractionError, FFmpegNotFoundError, SearchError
+from myyt.download.progress import TransferProgress
+from myyt.exceptions import (
+    DownloadError,
+    ExtractionError,
+    FFmpegNotFoundError,
+    SearchError,
+    StreamCancelledError,
+)
 from myyt.models import DownloadResult, PlayerInfo, SearchResult, VideoInfo
 from myyt.youtube.formats import manifest_urls, parse_streaming_formats
 
@@ -96,6 +104,28 @@ class FailingDownloadService:
 class InterruptedDownloadService:
     def download(self, _url, **_kwargs) -> DownloadResult:
         raise KeyboardInterrupt
+
+
+class SuccessfulStreamService:
+    def stream(self, _url, *, output, progress):
+        output.write(b"\x00media\xff")
+        if progress is not None:
+            progress(TransferProgress(7, 7, 1.0, 7.0, 0.0, True))
+
+
+class FailingStreamService:
+    def stream(self, _url, **_kwargs):
+        raise DownloadError("fixture stream failure")
+
+
+class ExtractionFailingStreamService:
+    def stream(self, _url, **_kwargs):
+        raise ExtractionError("fixture extraction failure")
+
+
+class ClosedStreamService:
+    def stream(self, _url, **_kwargs):
+        raise StreamCancelledError("downstream consumer closed the stream")
 
 
 def test_json_mode_writes_only_valid_json_to_stdout(capsys) -> None:
@@ -237,3 +267,81 @@ def test_download_cancellation_returns_130_without_stdout(capsys) -> None:
     assert exit_code == 130
     assert captured.out == ""
     assert captured.err == "error: cancelled\n"
+
+
+def test_stream_writes_binary_only_and_no_progress_keeps_stderr_empty(capsys) -> None:
+    output = BytesIO()
+
+    exit_code = main(
+        ["stream", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        stream_service=SuccessfulStreamService(),
+        binary_stdout=output,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert output.getvalue() == b"\x00media\xff"
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_stream_progress_is_written_to_stderr_only(capsys) -> None:
+    output = BytesIO()
+
+    exit_code = main(
+        ["stream", "https://youtu.be/M7lc1UVf-VE"],
+        stream_service=SuccessfulStreamService(),
+        binary_stdout=output,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert output.getvalue() == b"\x00media\xff"
+    assert captured.out == ""
+    assert "Downloaded:" in captured.err
+
+
+def test_stream_failure_preserves_binary_stdout_and_uses_stderr(capsys) -> None:
+    output = BytesIO()
+
+    exit_code = main(
+        ["stream", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        stream_service=FailingStreamService(),
+        binary_stdout=output,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == DownloadError.exit_code
+    assert output.getvalue() == b""
+    assert captured.out == ""
+    assert captured.err == "error: fixture stream failure\n"
+
+
+def test_stream_extraction_failure_keeps_stdout_empty_and_returns_domain_exit(capsys) -> None:
+    output = BytesIO()
+
+    exit_code = main(
+        ["stream", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        stream_service=ExtractionFailingStreamService(),
+        binary_stdout=output,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == ExtractionError.exit_code
+    assert output.getvalue() == b""
+    assert captured.out == ""
+    assert captured.err == "error: fixture extraction failure\n"
+
+
+def test_stream_broken_pipe_uses_cancellation_exit_without_traceback(capsys) -> None:
+    exit_code = main(
+        ["stream", "https://youtu.be/M7lc1UVf-VE", "--no-progress"],
+        stream_service=ClosedStreamService(),
+        binary_stdout=BytesIO(),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 130
+    assert captured.out == ""
+    assert "downstream consumer closed" in captured.err
+    assert "Traceback" not in captured.err

@@ -177,15 +177,71 @@ Status: implemented.
   confirmed public transport.
 - Player-client policy is undocumented and volatile; live tests remain essential.
 
-### Next milestone: 1.0
+## 1.0.0 — Binary source-media streaming
 
-- Add `myyt stream URL` with media bytes only on stdout and diagnostics on stderr.
-- Add configurable retry/timeout settings, structured stderr logging, and stable exit
-  and JSON integration contracts.
-- Refresh media URLs during long-running streams where safe.
-- Add manifest/fragment downloading for content without a direct HTTP representation.
-- Make subprocess and broken-pipe behavior robust for Node.js -> FFmpeg pipelines.
+Status: implemented.
 
-## 1.0 — Robust streaming and application integration
+### Implements
 
-Status: not started.
+- `myyt stream URL` and `--no-progress`
+- Raw selected source-audio bytes only on stdout
+- All progress, diagnostics, and errors on stderr
+- Windows binary stdout mode plus portable Linux/macOS and Docker behavior
+- Shared sink-based HTTP transfer engine for both file and stdout destinations
+- Incremental bounded reads and writes without a complete media buffer
+- No FFmpeg invocation or complete-media temporary file on the stream path
+- Normal bounded retry and media-URL refresh before the first output byte
+- Exact-offset HTTP 206 resume after partial output
+- Hard failure when a resume request receives HTTP 200 or a mismatched range
+- Strict same-representation checks before resuming with a refreshed URL
+- Full-length validation when the selected representation reports a byte length
+- Broken-pipe handling without retries or traceback noise, using exit code 130
+- Immutable `StreamResult` for service-layer completion accounting
+- Unit coverage for binary purity, stderr isolation, bounded chunks, retry, refresh,
+  safe and unsafe resumes, truncation, pipe closure, and resource cleanup
+- Opt-in live tests for a short public representation and process-level redirection
+
+### Streaming guarantees
+
+- Exit 0 means the transfer reached its validated expected length, or the origin
+  completed a response whose length was independently available from HTTP headers.
+- Once stdout contains bytes, `myyt` never restarts from byte zero and never switches
+  representations.
+- After partial output, continuation requires HTTP 206 and a `Content-Range` beginning
+  at the exact emitted-byte count.
+- A downstream consumer closing its pipe stops transfer promptly and returns 130.
+
+### Current limitations
+
+- `stream` emits the selected source container and codec; it does not transcode to
+  MP3 or another requested format.
+- Direct HTTP formats are supported. DASH/HLS manifest expansion and segment-specific
+  scheduling remain deferred.
+- One URL refresh is attempted after an explicit HTTP 403/410 rejection.
+- A post-output refresh is refused when content length is unknown because exact
+  representation compatibility cannot be proven.
+- Streaming requires a verifiable byte length from the selected format or HTTP
+  response; an unbounded response with no length is refused before output.
+- Player-client versions and proof requirements remain volatile and need live tests.
+- Cookies and a user-facing timeout/retry configuration surface are not yet exposed.
+- Private or account-gated media, DRM, paywalls, CAPTCHAs, and access-control bypasses
+  are not supported.
+
+### Known failure behavior
+
+- Extraction and selection failures happen before stdout bytes and preserve an empty
+  output stream.
+- Persistent network failures, truncation, unsafe resume, or repeated URL rejection
+  use non-zero exits; partial stdout may already exist and must be discarded by the
+  caller.
+- An origin that ignores a post-output range request is rejected instead of silently
+  duplicating bytes.
+- Consumer termination is reported as cancellation with exit code 130.
+
+### Next milestone
+
+- Add direct-manifest parsing and tested segment transfer when a public video exposes
+  no usable complete HTTP representation.
+- Expose user-facing timeout, retry, and optional cookie configuration without
+  weakening stdout contracts.
+- Add structured stderr logging controls and diagnostic response capture.

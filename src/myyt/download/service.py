@@ -6,7 +6,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from myyt.config import MEDIA_URL_REFRESH_MARGIN
 from myyt.exceptions import DownloadError, MediaURLExpiredError
 from myyt.media.ffmpeg import FFmpegProcessor
 from myyt.models import DownloadResult, MediaFormat, PlayerInfo
@@ -16,6 +15,7 @@ from myyt.youtube.selector import select_best_audio
 from .filenames import available_output_path, sanitize_filename
 from .http import HTTPDownloader
 from .progress import TransferProgress
+from .selection import expires_soon, extract_selection, matching_usable_format
 
 
 class DownloadService:
@@ -45,9 +45,9 @@ class DownloadService:
             raise DownloadError(f"unsupported audio output format: {audio_format}")
         directory = self._prepare_output_directory(output_directory)
         self.ffmpeg.ensure_available()
-        player_info, selected = self._extract_selection(url)
-        if _expires_soon(selected, self._wall_clock()):
-            player_info, selected = self._extract_selection(url)
+        player_info, selected = extract_selection(self.extractor, url)
+        if expires_soon(selected, self._wall_clock()):
+            player_info, selected = extract_selection(self.extractor, url)
 
         stem = sanitize_filename(
             player_info.video.title,
@@ -108,7 +108,7 @@ class DownloadService:
             return downloaded, player_info, selected
         except MediaURLExpiredError:
             refreshed_info = self.extractor.extract_player(url)
-            refreshed = _matching_usable_format(refreshed_info, selected.itag)
+            refreshed = matching_usable_format(refreshed_info, selected.itag)
             if refreshed is None:
                 refreshed = select_best_audio(refreshed_info.formats)
             if refreshed.itag != selected.itag:
@@ -124,10 +124,6 @@ class DownloadService:
             )
             return downloaded, refreshed_info, refreshed
 
-    def _extract_selection(self, url: str) -> tuple[PlayerInfo, MediaFormat]:
-        player_info = self.extractor.extract_player(url)
-        return player_info, select_best_audio(player_info.formats)
-
     @staticmethod
     def _prepare_output_directory(output_directory: Path) -> Path:
         directory = output_directory.expanduser()
@@ -140,22 +136,3 @@ class DownloadService:
             raise
         except OSError as exc:
             raise DownloadError(f"cannot prepare output directory: {exc}") from exc
-
-
-def _expires_soon(media_format: MediaFormat, now: float) -> bool:
-    return bool(
-        media_format.expires_at is not None
-        and media_format.expires_at <= int(now) + MEDIA_URL_REFRESH_MARGIN
-    )
-
-
-def _matching_usable_format(player_info: PlayerInfo, itag: int) -> MediaFormat | None:
-    for media_format in player_info.formats:
-        if (
-            media_format.itag == itag
-            and media_format.media_url
-            and not media_format.requires_n_transform
-            and media_format.protocol in {"http", "https"}
-        ):
-            return media_format
-    return None

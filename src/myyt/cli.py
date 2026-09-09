@@ -3,14 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import BinaryIO
 
 from myyt import __version__
 from myyt.download.progress import ProgressReporter
 from myyt.download.service import DownloadService
-from myyt.exceptions import MyytError
+from myyt.download.stream import StreamService
+from myyt.exceptions import DownloadError, MyytError, StreamCancelledError
 from myyt.models import MediaFormat, PlayerInfo, SearchResult, VideoInfo
 from myyt.youtube.extractor import YouTubeExtractor
 from myyt.youtube.search import YouTubeSearch
@@ -19,7 +22,8 @@ from myyt.youtube.selector import select_best_audio
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="myyt", description="Extract and search public YouTube video information."
+        prog="myyt",
+        description="Extract, download, and stream public YouTube media.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -57,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="post-processed audio format",
     )
     download.add_argument("--no-progress", action="store_true", help="disable progress output")
+
+    stream = subparsers.add_parser(
+        "stream", help="write the selected source audio bytes to stdout"
+    )
+    stream.add_argument("url", help="public YouTube video URL")
+    stream.add_argument("--no-progress", action="store_true", help="disable progress output")
     return parser
 
 
@@ -66,9 +76,12 @@ def main(
     extractor: YouTubeExtractor | None = None,
     searcher: YouTubeSearch | None = None,
     download_service: DownloadService | None = None,
+    stream_service: StreamService | None = None,
+    binary_stdout: BinaryIO | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+    using_process_stdout = False
 
     try:
         if args.command == "info":
@@ -105,6 +118,24 @@ def main(
                 reporter.close()
             print(result.output_path)
             return 0
+        if args.command == "stream":
+            using_process_stdout = binary_stdout is None
+            output = binary_stdout if binary_stdout is not None else _process_binary_stdout()
+            reporter = ProgressReporter(enabled=not args.no_progress)
+            try:
+                (stream_service or StreamService()).stream(
+                    args.url,
+                    output=output,
+                    progress=reporter,
+                )
+            finally:
+                reporter.close()
+            return 0
+    except StreamCancelledError as exc:
+        if using_process_stdout:
+            _replace_process_stdout_with_devnull()
+        print(f"error: {exc}", file=sys.stderr)
+        return exc.exit_code
     except MyytError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return exc.exit_code
@@ -252,3 +283,29 @@ def _format_bitrate(value: int | None) -> str:
 
 def _format_size(value: int | None) -> str:
     return f"{value / (1024 * 1024):.2f} MiB" if value is not None else "unknown"
+
+
+def _process_binary_stdout() -> BinaryIO:
+    output = getattr(sys.stdout, "buffer", None)
+    if output is None:
+        raise DownloadError("stdout does not expose a binary output buffer")
+    if os.name == "nt":
+        import msvcrt
+
+        try:
+            msvcrt.setmode(output.fileno(), os.O_BINARY)
+        except (OSError, ValueError) as exc:
+            raise DownloadError(f"cannot configure stdout for binary output: {exc}") from exc
+    return output
+
+
+def _replace_process_stdout_with_devnull() -> None:
+    try:
+        stdout_fd = sys.stdout.fileno()
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull_fd, stdout_fd)
+        finally:
+            os.close(devnull_fd)
+    except (AttributeError, OSError, ValueError):
+        pass

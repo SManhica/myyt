@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "myyt"
-version = "0.4.1"
+version = "1.0.0"
 description = "A from-scratch YouTube-only media extraction CLI"
 readme = "README.md"
 requires-python = ">=3.11"

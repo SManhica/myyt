@@ -61,6 +61,16 @@ class MediaURLExpiredError(DownloadError):
     """The selected temporary media URL is no longer accepted upstream."""
 
 
+class UnsafeResumeError(DownloadError):
+    """A byte stream cannot be resumed without risking corrupt output."""
+
+
+class StreamCancelledError(DownloadError):
+    """The downstream stream consumer closed before transfer completion."""
+
+    exit_code = 130
+
+
 class FFmpegError(MyytError):
     """FFmpeg discovery or post-processing failed."""
 

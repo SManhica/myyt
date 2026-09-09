@@ -255,3 +255,30 @@ Engineering references consulted for this change:
 
 The reference implementation was used to identify the protocol concept and current
 client policy. `myyt` retains its own small player-profile and transfer implementation.
+
+## Version 1.0 streaming observations
+
+Observed against a public short video on 2026-09-09:
+
+- The current public player profile returned a directly usable audio representation
+  with a reported content length.
+- The selected representation was transferred through the stdout-oriented service
+  to its complete reported byte count.
+- The transfer used the same signed direct-media URL and HTTP range machinery as the
+  complete-file downloader; no separate YouTube endpoint was required for streaming.
+
+These observations confirm the current direct-representation path, not a permanent
+YouTube protocol guarantee. Player profiles, URL proof requirements, range behavior,
+and available formats remain subject to change.
+
+### Implementation policy, not upstream fact
+
+Version 1.0 treats stdout as irreversible. After any bytes are emitted, a refreshed
+URL is accepted only for a normalized representation matching the original itag,
+MIME/container/codec properties, audio parameters, and known total byte length. The
+subsequent HTTP response must be 206 and begin at the exact emitted offset.
+
+YouTube does not declare this recovery policy. It is a conservative client rule that
+prevents duplicated prefixes or mixed representations when temporary URLs expire.
+An unverifiable continuation fails visibly even if a more permissive client might
+attempt it.

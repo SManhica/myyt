@@ -1,4 +1,5 @@
-from .http import HTTPDownloader
+from .http import BinaryStreamSink, HTTPDownloader
 from .service import DownloadService
+from .stream import StreamService
 
-__all__ = ["DownloadService", "HTTPDownloader"]
+__all__ = ["BinaryStreamSink", "DownloadService", "HTTPDownloader", "StreamService"]

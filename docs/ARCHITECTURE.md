@@ -1,164 +1,142 @@
 # Architecture
 
-## Version 0.4.1 boundaries
+## Version 1.0 boundaries
 
-The implementation deliberately creates modules only when they own a real
-responsibility; roadmap placeholders are not created as empty files.
+The project creates modules only when they own a concrete responsibility. Raw
+YouTube dictionaries are normalized at extraction boundaries; transfer and CLI code
+operate on typed values.
 
 ### `myyt.models`
 
-`VideoInfo`, `SearchResult`, `MediaFormat`, `PlayerInfo`, and `DownloadResult` are
-normalized public results. Raw YouTube dictionaries do not cross their extraction
-boundaries. Models are immutable so selection and transfer code cannot alter
-extraction results.
+`VideoInfo`, `SearchResult`, `MediaFormat`, `PlayerInfo`, `DownloadResult`, and
+`StreamResult` are immutable public results. `StreamResult` is returned internally by
+the stream use case for completion accounting; it is deliberately not written to
+stdout by the CLI.
 
 ### `myyt.exceptions`
 
-Expected failures have domain-specific types and stable process exit codes. Low-level
-network and JSON errors are translated before they reach the CLI.
+Expected failures use domain types and stable exit codes. `UnsafeResumeError`
+identifies a transfer that cannot continue without corrupting already-emitted bytes.
+`StreamCancelledError` represents downstream pipe closure and uses exit code 130.
 
 ### `myyt.config`
 
-Holds shared default timeout, retry, user-agent, chunk-size, and URL-refresh values.
-It contains no environment loading or mutable global state; a fuller user-facing
-configuration system remains a v1.0 concern.
+Owns shared HTTP timeout, retry, user-agent, chunk, range, and URL-refresh defaults.
+It has no network behavior or mutable global state.
 
-### `myyt.youtube.url_parser`
+### `myyt.youtube`
 
-Validates supported YouTube hosts and path shapes, extracts the 11-character video
-ID, and produces one canonical watch URL. It contains no network logic.
+- `url_parser` validates supported URLs and produces canonical video identities.
+- `client` centralizes YouTube HTTP headers, timeout, retry, GET, and JSON POST work.
+- `client_context` parses public player/search client configuration.
+- `parsing` contains defensive primitives for heterogeneous response trees.
+- `extractor` normalizes watch/player data and never transfers media bytes.
+- `search` owns search-page and continuation parsing.
+- `player` isolates public player-client policy.
+- `formats` maps raw streaming data into `MediaFormat` values.
+- `selector` is a pure best-audio ranking function with no HTTP behavior.
 
-### `myyt.youtube.client`
+### `myyt.download.selection`
 
-Owns HTTP headers, timeouts, retry policy, response decoding, query encoding, and
-JSON POST support. The injected opener and sleeper make retry behavior testable.
-Future cookies and YouTube client context belong at or above this boundary, not in
-individual extractors.
-
-### `myyt.youtube.client_context`
-
-Decodes public `ytcfg` assignments and normalizes the API key, visitor data, client
-version, and request context used by first-party search/player endpoints. It supports
-direct-object and quoted-JSON assignment forms without evaluating JavaScript.
-
-### `myyt.youtube.extractor`
-
-Obtains a watch page, locates its embedded player response, checks response identity,
-and normalizes `videoDetails` with `microformat` fallbacks into `VideoInfo`.
-`extract_player` additionally orchestrates player-client resolution and format
-normalization into `PlayerInfo`. It does not download media bytes or choose a format.
-
-### `myyt.youtube.parsing`
-
-Contains schema-neutral primitives shared by watch-page and search parsing: embedded
-JSON decoding, text runs, scalar validation, duration conversion, and thumbnail
-selection. It has no HTTP or command-specific policy.
-
-### `myyt.youtube.search`
-
-`YouTubeSearch` retrieves the public search page, parses only video renderers from the
-primary results, follows first-party continuation commands when necessary, removes
-duplicate video IDs, and returns `SearchResult` values. `SearchPage` and
-`WebClientConfig` keep continuation tokens and volatile client configuration internal.
-The CLI never exposes either one as stable application data.
-
-### `myyt.youtube.player`
-
-Answers: "Which public player response gives us directly usable audio URLs?" The WEB,
-Android, and iOS clients can expose URLs that now require a GVS Proof-of-Origin token;
-the presence of a URL alone is therefore insufficient. V0.4.1 requests an isolated
-public visionOS profile whose current GVS policy does not require that token. The
-module owns profile versions, headers, and response suitability checks. It does not
-generate attestation tokens, parse fields into formats, or rank audio.
-
-### `myyt.youtube.formats`
-
-Answers: "What normalized media formats are present?" It parses `formats` and
-`adaptiveFormats`, MIME types, codecs, quality, dimensions, length, URL expiry,
-transport, range-fragment state, and cipher/`n` state. DASH/HLS manifest URLs are
-preserved separately on `PlayerInfo`.
-
-### `myyt.youtube.selector`
-
-Answers: "Which available format is the best usable audio?" `select_best_audio` is a
-pure function over `MediaFormat` values. It has no network, YouTube-response, CLI, or
-downloader knowledge.
+Shares extraction/selection, expiry, same-itag lookup, and exact-representation
+compatibility rules between file download and streaming orchestration. Exact resume
+compatibility requires matching representation identity and media properties,
+including a known, unchanged content length.
 
 ### `myyt.download.http`
 
-Answers: "Given a direct media URL, how are its bytes transferred?" `HTTPDownloader`
-streams bounded chunks to a file, reports normalized progress, retries recoverable
-failures, uses bounded byte ranges when length is known, resumes partial files,
-validates the returned content range,
-and distinguishes expired/rejected URLs from ordinary transfer failures. It knows
-nothing about YouTube metadata, format selection, or FFmpeg.
+`HTTPDownloader` is the single direct-media transfer engine. It reads bounded chunks,
+uses bounded byte ranges when length is known, reports progress, validates response
+lengths, and retries transient failures.
 
-### `myyt.download.progress`
+The engine writes through a small `TransferSink` contract:
 
-Defines transfer progress data and the terminal renderer. Interactive terminals get
-rate-limited in-place updates; redirected stderr receives only a final summary. This
-keeps transport accounting separate from presentation.
+- `FileSink` can safely truncate and restart when an origin ignores a resume range.
+- `BinaryStreamSink` writes incrementally to a caller-owned binary stream and cannot
+  retract bytes. After output begins, it accepts continuation only when the origin
+  returns HTTP 206 with `Content-Range` starting at the exact current offset.
 
-### `myyt.download.filenames`
-
-Sanitizes untrusted video titles for Windows, Linux, and macOS path rules, handles
-reserved Windows device names, limits component length, and chooses collision-free
-output names without overwriting an existing download.
+This is one transfer implementation with two destinations, not parallel download
+and stream implementations. The sink owns destination semantics; the transport owns
+HTTP correctness.
 
 ### `myyt.download.service`
 
-Owns the v0.4 use case: extract, select, refresh expiring URLs, transfer to an isolated
-temporary directory, invoke FFmpeg, atomically move the result into place, and return
-`DownloadResult`. It is the only component that coordinates YouTube extraction,
-generic transfer, and post-processing.
+`DownloadService` owns the complete-file use case: extract, select, refresh, transfer
+to an isolated temporary directory, invoke FFmpeg, publish a collision-free MP3, and
+return `DownloadResult`. Different-format reselection is safe here because a partial
+temporary file can be discarded.
+
+### `myyt.download.stream`
+
+`StreamService` owns the irreversible stdout use case: extract, select, refresh near
+expiry, and pass a `BinaryStreamSink` to the shared transfer engine. Before the first
+byte, refresh may reselect normally. After the first byte, refresh may continue only
+with an exact match for the original representation; otherwise it fails visibly.
+
+The service creates no media file and has no dependency on the FFmpeg component.
+
+### `myyt.download.progress`
+
+`TransferProgress` is transport-neutral progress data. `ProgressReporter` renders it
+only to stderr, rate-limiting interactive updates and emitting a final summary when
+stderr is redirected.
+
+### `myyt.download.filenames`
+
+Owns portable filename sanitization and collision-free final-path selection for the
+complete-file command. Streaming does not use it.
 
 ### `myyt.media.ffmpeg`
 
-Discovers the FFmpeg executable before network transfer and converts one local input
-into MP3. It captures stderr, validates the exit code and output, and terminates the
-child on cancellation.
-It contains no YouTube, selection, HTTP, or filename policy.
+Discovers and manages FFmpeg for complete-file MP3 post-processing. It has no
+YouTube, selection, or HTTP knowledge and is not invoked by `stream`.
 
 ### `myyt.cli`
 
-Parses commands, invokes the extractor, renders human or JSON output, and maps domain
-errors to process status. JSON stdout contains no diagnostics.
+Parses commands, maps domain failures to exit statuses, and maintains output-channel
+contracts. It switches process stdout to binary mode on Windows before streaming.
+On downstream closure it suppresses interpreter-shutdown pipe noise and exits 130
+without retrying the write.
 
 ## Dependency direction
 
-`cli -> extractor/search -> client`
+```text
+cli -> youtube extractor/search/selector -> youtube client/parsers
+cli -> DownloadService -> selection + HTTPDownloader + FFmpegProcessor
+cli -> StreamService   -> selection + HTTPDownloader
+HTTPDownloader -> TransferSink + TransferProgress
+extractor/search/formats/services/cli -> immutable models
+all public layers -> domain exceptions
+```
 
-`extractor -> player -> client/client_context`
+The media transfer engine knows URLs and byte counts, not YouTube response schemas.
+The selector knows formats, not networks. FFmpeg knows local input/output, not
+extraction. These directions keep changes in volatile player behavior from spreading
+into binary I/O code.
 
-`extractor -> formats`
+## Streaming correctness boundary
 
-`cli -> download.service -> extractor/selector/download.http/media.ffmpeg`
+Before output begins, a failed request can be retried or refreshed because no
+consumer-visible state exists. After output begins, stdout is irreversible. The only
+safe recovery is the same representation at the current byte offset:
 
-`cli -> download.progress`
+1. request `Range: bytes=N-...`, where `N` is exactly the emitted byte count;
+2. require HTTP 206;
+3. require `Content-Range` to start at `N`;
+4. on URL refresh, require the same representation properties and total length;
+5. fail on HTTP 200, mismatched ranges, changed formats, or unverifiable length.
 
-`download.service -> download.filenames`
-
-`download.http -> download.progress`
-
-`cli -> selector -> models`
-
-`cli -> models <- extractor/search/formats`
-
-`extractor/search/formats/client_context -> parsing`
-
-`url_parser -> exceptions <- client/extractor/search/cli`
-
-The network layer knows nothing about normalized video models. The model knows
-nothing about HTTP or command-line concerns.
+This rule prevents silent duplication and mixed-format corruption. It intentionally
+prefers a non-zero exit over output that merely appears complete.
 
 ## Deferred responsibilities
 
-Direct adaptive MP4/WebM representations are fragmented containers internally, but
-their signed URLs can currently be transferred as complete range-addressable HTTP
-resources. A dedicated fragment scheduler is therefore not introduced prematurely.
-DASH/HLS manifest expansion and segment scheduling remain deferred until a tested
-content case requires them. Binary stdout streaming belongs to v1.0.
+- DASH/HLS manifest expansion and segment scheduling for manifest-only content.
+- Player-JavaScript signature and `n` transformation when a verified public response
+  no longer supplies directly usable URLs.
+- User-supplied cookie/configuration surfaces and richer structured logging controls.
+- Additional output codecs for complete-file post-processing.
 
-Player-JavaScript signature and `n` transformation code also remains absent because
-the verified player fallback returns signed URLs that need neither transformation.
-Cipher and `n` states remain explicit so upstream changes fail honestly.
+Private access, DRM, paywalls, CAPTCHA solving, and attestation bypasses remain out of
+scope.
